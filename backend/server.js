@@ -101,7 +101,8 @@ wss.on('connection', async (ws, req) => {
                         const response = await fetch(whisperUrl, {
                             method: 'POST',
                             headers: {
-                                // DO NOT set Content-Type here, let fetch derive it from FormData
+                                // Explicitly add headers from form-data library
+                                ...formData.getHeaders(), 
                                 'Authorization': `Bearer ${openaiApiKey}`,
                             },
                             body: formData, 
