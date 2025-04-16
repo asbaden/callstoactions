@@ -6,6 +6,7 @@ const WebSocket = require('ws'); // WebSocket library
 const { createClient } = require('@supabase/supabase-js'); // Supabase JS library
 const url = require('url'); // To parse URL query parameters
 const OpenAI = require('openai'); // OpenAI library
+const { Readable } = require('stream'); // Import Readable stream
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -108,17 +109,17 @@ wss.on('connection', async (ws, req) => {
 
                     let filename = `audio_${ws.userId}_${Date.now()}.webm`; // Define filename
                     try {
-                        // Construct the parameter for the 'file' field
-                        const fileParam = {
-                           content: completeBuffer,
-                           name: filename,
-                           type: 'audio/webm' // Explicitly add the mime type
-                        };
-                        // Log exactly what we are sending
-                        console.log(`Attempting transcription with fileParam: { name: ${fileParam.name}, type: ${fileParam.type}, content_length: ${fileParam.content?.length} }`);
+                        // --- Convert Buffer to Readable Stream ---
+                        const audioStream = Readable.from(completeBuffer);
+                        // Add a path property, sometimes required by libraries processing streams as files
+                        audioStream.path = filename; 
+
+                        // Log attempt with stream
+                        console.log(`Attempting transcription with ReadableStream (filename: ${filename}, size: ${completeBuffer.length})`);
 
                         const transcription = await openai.audio.transcriptions.create({
-                            file: fileParam, 
+                            // Pass the stream directly as the file
+                            file: audioStream, 
                             model: 'whisper-1',
                         });
 
