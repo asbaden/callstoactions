@@ -156,10 +156,12 @@ async function loadJournalEntries() {
 }
 
 // --- Call Functionality ---
-let websocket = null; // Use simple websocket variable again
+let websocket = null;
 let mediaRecorder = null;
-// let audioChunks = []; // Not needed if sending directly
-// const WS_URL = 'wss://callstoactions.onrender.com'; // Now comes from config.js
+let audioContext = null;
+let audioQueue = [];
+let isPlaying = false;
+let stopCallBtn = null; // Reference to stop call button
 
 async function startCall(callType) {
     if (!currentUser) {
@@ -168,8 +170,7 @@ async function startCall(callType) {
     }
     // Close previous connection if any
     if (websocket && websocket.readyState === WebSocket.OPEN) {
-         alert('A call is already in progress.');
-         // Optionally close old connection: websocket.close();
+        alert('A call is already in progress.');
         return;
     }
     websocket = null;
@@ -177,8 +178,22 @@ async function startCall(callType) {
         mediaRecorder.stop();
     }
     mediaRecorder = null;
+    
+    // Reset audio state
+    audioQueue = [];
+    isPlaying = false;
+    
+    // Show stop call button
+    if (stopCallBtn) {
+        stopCallBtn.style.display = 'inline-block';
+    }
+    
+    // Create AudioContext for audio playback
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
 
-    console.log(`Starting ${callType} call (Standard API)...`);
+    console.log(`Starting ${callType} call (Realtime API)...`);
     callStatus.textContent = `Initializing ${callType} call...`;
 
     // 1. Get Supabase Auth Token (JWT)
@@ -192,8 +207,8 @@ async function startCall(callType) {
     const accessToken = session.access_token;
     console.log('Got Supabase Access Token.');
 
-     // Check for BACKEND_API_URL which contains the base URL for WS
-     if (typeof BACKEND_API_URL === 'undefined') {
+    // Check for BACKEND_API_URL which contains the base URL for WS
+    if (typeof BACKEND_API_URL === 'undefined') {
         console.error('BACKEND_API_URL is not defined in config.js');
         alert('Configuration error: Backend URL not set.');
         callStatus.textContent = 'Config error.';
@@ -211,10 +226,10 @@ async function startCall(callType) {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         console.log('Microphone access granted.');
     } catch (err) {
-         console.error('Error getting microphone access:', err);
-         alert('Microphone access denied.');
-         callStatus.textContent = 'Mic access denied.';
-         return;
+        console.error('Error getting microphone access:', err);
+        alert('Microphone access denied.');
+        callStatus.textContent = 'Mic access denied.';
+        return;
     }
 
     // 3. Establish WebSocket Connection to OUR Backend
@@ -240,19 +255,23 @@ async function startCall(callType) {
             if (message.type === 'status') {
                 callStatus.textContent = message.message;
             } else if (message.type === 'transcript') {
-                // Display transcription received from backend for debugging
-                callStatus.textContent = `Transcript: ${message.text}`; 
-                // TODO: Later, feed this text into GPT, get TTS, play audio
+                // Display transcription received from backend
+                callStatus.textContent = `You said: ${message.text}`; 
             } else if (message.type === 'error') {
                 console.error('Received error from backend:', message.message);
                 callStatus.textContent = `Server Error: ${message.message}`;
+            } else if (message.type === 'response.text.delta') {
+                // Display assistant's response text
+                callStatus.textContent = `Assistant: ${message.delta}`;
+            } else if (message.type === 'response.audio.delta') {
+                // Handle audio from OpenAI
+                playAudio(message.delta);
             } else {
-                 console.log('Unhandled message type from server:', message.type);
+                console.log('Unhandled message type from server:', message.type);
             }
         } catch (e) {
             console.error('Failed to parse incoming server message or handle event:', event.data, e);
-            // Display raw message if not JSON
-             callStatus.textContent = `Server: ${event.data}`;
+            callStatus.textContent = `Server: ${event.data}`;
         }
     };
 
@@ -273,6 +292,69 @@ async function startCall(callType) {
         websocket = null;
         mediaRecorder = null;
     };
+}
+
+// --- Audio playback function for Realtime API ---
+function playAudio(base64Audio) {
+    // Convert base64 to ArrayBuffer
+    const binaryString = atob(base64Audio);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Add to queue and start playing if not already
+    audioQueue.push(bytes.buffer);
+    if (!isPlaying) {
+        playNextChunk();
+    }
+}
+
+function playNextChunk() {
+    if (audioQueue.length === 0) {
+        isPlaying = false;
+        return;
+    }
+    
+    isPlaying = true;
+    const audioBuffer = audioQueue.shift();
+    
+    // Decode and play audio
+    audioContext.decodeAudioData(audioBuffer)
+        .then(decodedBuffer => {
+            const source = audioContext.createBufferSource();
+            source.buffer = decodedBuffer;
+            source.connect(audioContext.destination);
+            source.onended = playNextChunk;
+            source.start(0);
+        })
+        .catch(err => {
+            console.error('Error decoding audio data:', err);
+            playNextChunk(); // Skip failed chunk
+        });
+}
+
+// --- Stop call function ---
+function stopCall() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.close();
+    }
+    
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+    }
+    
+    // Stop any playing audio
+    audioQueue = [];
+    isPlaying = false;
+    
+    // Hide stop call button
+    if (stopCallBtn) {
+        stopCallBtn.style.display = 'none';
+    }
+    
+    callStatus.textContent = 'Call ended.';
 }
 
 // --- Restore MediaRecorder setup to send Blob --- 
@@ -318,10 +400,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const morningCallBtn = document.getElementById('morning-call-button');
     const eveningCallBtn = document.getElementById('evening-call-button');
+    stopCallBtn = document.getElementById('stop-call-button');
 
     // Log found elements
     console.log('Morning call button element:', morningCallBtn);
     console.log('Evening call button element:', eveningCallBtn);
+    console.log('Stop call button element:', stopCallBtn);
 
     if (morningCallBtn) {
         morningCallBtn.addEventListener('click', () => {
@@ -343,5 +427,15 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Evening call listener attached.');
     } else {
         console.error('Evening call button not found! Cannot attach listener.');
+    }
+    
+    if (stopCallBtn) {
+        stopCallBtn.addEventListener('click', () => {
+            console.log('Stop Call Button Listener EXECUTED!');
+            stopCall();
+        });
+        console.log('Stop call listener attached.');
+    } else {
+        console.error('Stop call button not found! Cannot attach listener.');
     }
 });
