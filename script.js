@@ -360,29 +360,39 @@ function stopCall() {
 // --- Restore MediaRecorder setup to send Blob --- 
 
 function setupMediaRecorder(stream) {
-    const options = { mimeType: 'audio/webm;codecs=opus' }; 
-     try {
-         mediaRecorder = new MediaRecorder(stream, options);
-     } catch (e) {
-         console.warn('Preferred mimeType failed, trying default:', e);
-         mediaRecorder = new MediaRecorder(stream);
-     }
-     console.log('Using mimeType:', mediaRecorder.mimeType);
+    // Try to use PCM audio format if supported
+    let options;
+    try {
+        // Check if PCM recording is supported
+        if (MediaRecorder.isTypeSupported('audio/wav')) {
+            options = { mimeType: 'audio/wav' };
+        } else if (MediaRecorder.isTypeSupported('audio/pcm')) {
+            options = { mimeType: 'audio/pcm' };
+        } else {
+            // Fallback to WEBM
+            options = { mimeType: 'audio/webm;codecs=opus' };
+            console.log('Using fallback WebM format - this may not work with OpenAI Realtime API');
+        }
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn('Preferred mimeType failed, trying default:', e);
+        mediaRecorder = new MediaRecorder(stream);
+    }
+    console.log('Using mimeType:', mediaRecorder.mimeType);
 
     mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
             // Send audio blob directly to our backend
-            // console.log(`Sending audio chunk: ${event.data.size} bytes`); 
             websocket.send(event.data); 
         } 
     };
     
-     mediaRecorder.onstop = () => {
-         console.log('Recording stopped.');
-     };
-     mediaRecorder.onerror = (event) => {
-         console.error('MediaRecorder error:', event.error);
-     };
+    mediaRecorder.onstop = () => {
+        console.log('Recording stopped.');
+    };
+    mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event.error);
+    };
 }
 
 // --- Remove Realtime API Audio Playback --- 

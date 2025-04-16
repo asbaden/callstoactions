@@ -67,8 +67,8 @@ app.post('/api/create-realtime-session', async (req, res) => {
                 model: "gpt-4o-realtime-preview",
                 modalities: ["audio", "text"],
                 voice: "echo",
-                input_audio_format: "webm",
-                output_audio_format: "webm",
+                input_audio_format: "pcm16",
+                output_audio_format: "pcm16",
                 input_audio_transcription: {
                     model: "whisper-1"
                 },
@@ -139,8 +139,8 @@ wss.on('connection', async (ws, req) => {
                     model: "gpt-4o-realtime-preview",
                     modalities: ["audio", "text"],
                     voice: "echo",
-                    input_audio_format: "webm",
-                    output_audio_format: "webm",
+                    input_audio_format: "pcm16",
+                    output_audio_format: "pcm16",
                     input_audio_transcription: {
                         model: "whisper-1"
                     },
@@ -176,8 +176,8 @@ wss.on('connection', async (ws, req) => {
                     type: "session.update",
                     session: {
                         turn_detection: { type: "server_vad" },
-                        input_audio_format: "webm",
-                        output_audio_format: "webm",
+                        input_audio_format: "pcm16",
+                        output_audio_format: "pcm16",
                         input_audio_transcription: {
                             model: "whisper-1"
                         },
@@ -279,18 +279,20 @@ wss.on('connection', async (ws, req) => {
                         try {
                             console.log(`Attempting transcription for ${ws.userEmail} (${completeBuffer.length} bytes)`);
                             
-                            // Create a temporary file
+                            // Create a temporary file with .wav extension
                             const tempDir = os.tmpdir();
-                            const tempFile = path.join(tempDir, `audio_${ws.userId}_${Date.now()}.webm`);
+                            const tempFile = path.join(tempDir, `audio_${ws.userId}_${Date.now()}.wav`);
                             
-                            // Write buffer to file
+                            // Use ffmpeg or similar to convert webm to wav if available
+                            // For now, save as wav directly which may work for some browsers
                             fs.writeFileSync(tempFile, completeBuffer);
                             console.log(`Written audio to temporary file: ${tempFile}`);
                             
                             // Use file for transcription
                             const transcription = await openai.audio.transcriptions.create({
                                 file: fs.createReadStream(tempFile),
-                                model: 'whisper-1'
+                                model: 'whisper-1',
+                                response_format: 'json' // Ensure JSON response format
                             });
                             
                             // Clean up temp file
@@ -300,6 +302,60 @@ wss.on('connection', async (ws, req) => {
                             const transcriptText = transcription.text;
                             console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
                             ws.send(JSON.stringify({ type: 'transcript', text: transcriptText }));
+
+                            // Try to send a response using the OpenAI API
+                            try {
+                                const completion = await openai.chat.completions.create({
+                                    model: "gpt-4o",
+                                    messages: [
+                                        {
+                                            role: "system",
+                                            content: "You are CallsToAction, a helpful voice assistant. Keep responses short and conversational."
+                                        },
+                                        { 
+                                            role: "user", 
+                                            content: transcriptText 
+                                        }
+                                    ]
+                                });
+                                
+                                // Send text response back to client
+                                const responseText = completion.choices[0].message.content;
+                                ws.send(JSON.stringify({ 
+                                    type: 'response.text.delta', 
+                                    delta: responseText 
+                                }));
+                                
+                                // Optionally generate speech from text
+                                try {
+                                    const speechResponse = await openai.audio.speech.create({
+                                        model: "tts-1",
+                                        voice: "echo",
+                                        input: responseText
+                                    });
+                                    
+                                    // Convert to Buffer
+                                    const buffer = Buffer.from(await speechResponse.arrayBuffer());
+                                    
+                                    // Send audio in chunks to match Realtime API format
+                                    const chunkSize = 16000; // Approximate 1-second chunk at 16kHz
+                                    for (let i = 0; i < buffer.length; i += chunkSize) {
+                                        const chunk = buffer.slice(i, Math.min(i + chunkSize, buffer.length));
+                                        ws.send(JSON.stringify({ 
+                                            type: 'response.audio.delta', 
+                                            delta: chunk.toString('base64') 
+                                        }));
+                                        
+                                        // Small delay to simulate streaming
+                                        await new Promise(resolve => setTimeout(resolve, 50));
+                                    }
+                                } catch (speechError) {
+                                    console.error('Error generating speech:', speechError);
+                                }
+                                
+                            } catch (completionError) {
+                                console.error('Error generating response:', completionError);
+                            }
 
                         } catch (transcriptionError) {
                             console.error(`Error during transcription for ${ws.userEmail}:`, transcriptionError);
