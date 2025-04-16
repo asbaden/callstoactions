@@ -10,6 +10,7 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const FormData = require('form-data');
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -280,30 +281,53 @@ wss.on('connection', async (ws, req) => {
                             console.log(`Attempting transcription for ${ws.userEmail} (${completeBuffer.length} bytes)`);
                             
                             try {
-                                // Send directly to the API as base64 data
-                                console.log(`Attempting direct transcription using base64...`);
+                                // Create a temporary file path
+                                const tempDir = os.tmpdir();
+                                const tempFilePath = path.join(tempDir, `audio_${ws.userId}_${Date.now()}.webm`);
                                 
-                                // Convert buffer to base64
-                                const base64Audio = completeBuffer.toString('base64');
+                                // Write the buffer to a file
+                                fs.writeFileSync(tempFilePath, completeBuffer);
                                 
-                                const transcription = await openai.audio.transcriptions.create({
-                                    model: 'whisper-1',
-                                    response_format: 'json',
-                                    // Use direct base64 string, avoiding file system
-                                    file: {
-                                        bytes: completeBuffer,
-                                        name: `audio_${ws.userId}_${Date.now()}.webm`
-                                    }
+                                // Create a proper FormData
+                                const formData = new FormData();
+                                formData.append('file', fs.createReadStream(tempFilePath));
+                                formData.append('model', 'whisper-1');
+                                
+                                console.log(`Sending file-based transcription request`);
+                                
+                                // Make the API request
+                                const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${openaiApiKey}`,
+                                        ...formData.getHeaders()
+                                    },
+                                    body: formData
                                 });
-
-                                const transcriptText = transcription.text;
+                                
+                                // Clean up the temporary file
+                                try {
+                                    fs.unlinkSync(tempFilePath);
+                                    console.log(`Deleted temporary file: ${tempFilePath}`);
+                                } catch (unlinkError) {
+                                    console.error(`Error deleting temporary file: ${unlinkError.message}`);
+                                }
+                                
+                                if (!response.ok) {
+                                    const errorData = await response.json();
+                                    throw new Error(`OpenAI API returned ${response.status}: ${JSON.stringify(errorData)}`);
+                                }
+                                
+                                const transcriptionData = await response.json();
+                                const transcriptText = transcriptionData.text;
+                                
                                 console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
                                 ws.send(JSON.stringify({ type: 'transcript', text: transcriptText }));
-
-                                // Try to send a response using the OpenAI API
+                                
+                                // Process AI response...
                                 try {
                                     const completion = await openai.chat.completions.create({
-                                        model: "gpt-4o",
+                                        model: "gpt-4",
                                         messages: [
                                             {
                                                 role: "system",
