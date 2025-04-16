@@ -7,6 +7,7 @@ const { createClient } = require('@supabase/supabase-js'); // Supabase JS librar
 const url = require('url'); // To parse URL query parameters
 const OpenAI = require('openai'); // OpenAI library
 const { Readable } = require('stream'); // Import Readable stream
+const FormData = require('form-data'); // Require form-data library
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -107,40 +108,59 @@ wss.on('connection', async (ws, req) => {
                     const completeBuffer = Buffer.concat(ws.audioBuffer);
                     ws.audioBuffer = []; // Clear buffer after sending
 
-                    let filename = `audio_${ws.userId}_${Date.now()}.webm`; // Define filename
+                    let filename = `audio_${ws.userId}_${Date.now()}.webm`;
                     try {
-                        // --- Attempt passing Buffer directly --- 
-                        // Ensure it's definitely a Buffer object
-                        if (!Buffer.isBuffer(completeBuffer)) {
-                            throw new Error('Internal error: completeBuffer is not a Buffer');
-                        }
+                        // --- Manually construct FormData and use fetch --- 
+                        const formData = new FormData();
+                        formData.append('file', completeBuffer, { filename: filename, contentType: 'audio/webm' });
+                        formData.append('model', 'whisper-1');
 
-                        console.log(`Attempting transcription directly with Buffer (filename: ${filename}, size: ${completeBuffer.length})`);
+                        console.log(`Attempting transcription via fetch with FormData (filename: ${filename}, size: ${completeBuffer.length})`);
 
-                        const transcription = await openai.audio.transcriptions.create({
-                            // Pass the buffer directly. The library might create the form.
-                            file: completeBuffer, 
-                            model: 'whisper-1',
-                            // We might need to provide filename/mime type via additional parameters if the library supports it
-                            // Check openai library documentation for how to specify filename for a buffer.
-                            // For now, relying on the library to handle the buffer as a file-like object.
+                        const whisperUrl = 'https://api.openai.com/v1/audio/transcriptions';
+                        
+                        const response = await fetch(whisperUrl, {
+                            method: 'POST',
+                            headers: {
+                                ...formData.getHeaders(), // Include boundary and content-type
+                                'Authorization': `Bearer ${openaiApiKey}`,
+                            },
+                            body: formData, // Pass FormData object directly
                         });
 
-                        console.log(`Transcription result for ${ws.userEmail}:`, transcription.text);
-                        ws.send(JSON.stringify({ type: 'transcript', text: transcription.text }));
+                        const responseData = await response.json();
+
+                        if (!response.ok) {
+                             // Throw an error to be caught by the catch block
+                             // Include details from the response if possible
+                             const errorPayload = {
+                                 status: response.status,
+                                 statusText: response.statusText,
+                                 message: `API request failed: ${response.statusText}`,
+                                 responseBody: responseData
+                             };
+                             console.error('Whisper API Error Response:', errorPayload);
+                             throw new Error(responseData.error?.message || `HTTP error! status: ${response.status}`);
+                        }
+                        
+                        if (!responseData || !responseData.text) {
+                            console.error('Invalid transcription response format:', responseData);
+                            throw new Error('Invalid response format from transcription API');
+                        }
+
+                        const transcriptText = responseData.text;
+                        console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
+                        ws.send(JSON.stringify({ type: 'transcript', text: transcriptText }));
 
                     } catch (transcriptionError) {
-                        console.error(`Error during transcription for ${ws.userEmail} (Filename: ${filename}):`, transcriptionError);
-                        console.error(`Failed to transcribe buffer of size: ${completeBuffer?.length || 'N/A'}`);
-                        if (transcriptionError instanceof OpenAI.APIError) {
-                            console.error('OpenAI API Error Status:', transcriptionError.status);
-                            console.error('OpenAI API Error Type:', transcriptionError.type);
-                            console.error('OpenAI API Error Code:', transcriptionError.code);
-                            console.error('OpenAI API Error Param:', transcriptionError.param);
-                            console.error('OpenAI API Error Message:', transcriptionError.message);
-                        } else {
-                            console.error('Non-API Error during transcription:', transcriptionError);
+                        console.error(`Error during transcription fetch for ${ws.userEmail} (Filename: ${filename}):`, transcriptionError);
+                        // Log additional details if it came from our thrown error
+                        if(transcriptionError.responseBody){
+                             console.error('API Response Body on Error:', transcriptionError.responseBody);
                         }
+                        console.error(`Failed to transcribe buffer of size: ${completeBuffer?.length || 'N/A'}`);
+                        // Detailed logging of specific OpenAI API errors might be less direct here,
+                        // rely on the logged response body
                         ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed.' }));
                     }
                 }
