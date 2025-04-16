@@ -156,10 +156,10 @@ async function loadJournalEntries() {
 }
 
 // --- Call Functionality ---
-// let websocket = null; // Re-initialize inside startCall
-// let mediaRecorder = null;
-// let audioChunks = [];
-// const WS_URL = '...'; // No longer needed here
+let websocket = null; // Use simple websocket variable again
+let mediaRecorder = null;
+// let audioChunks = []; // Not needed if sending directly
+// const WS_URL = 'wss://callstoactions.onrender.com'; // Now comes from config.js
 
 async function startCall(callType) {
     if (!currentUser) {
@@ -167,19 +167,21 @@ async function startCall(callType) {
         return;
     }
     // Close previous connection if any
-    if (window.openaiWebsocket && window.openaiWebsocket.readyState === WebSocket.OPEN) {
-        window.openaiWebsocket.close();
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+         alert('A call is already in progress.');
+         // Optionally close old connection: websocket.close();
+        return;
     }
-    window.openaiWebsocket = null;
-    if (window.mediaRecorder && window.mediaRecorder.state === 'recording') {
-        window.mediaRecorder.stop();
+    websocket = null;
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
     }
-    window.mediaRecorder = null;
+    mediaRecorder = null;
 
-    console.log(`Starting ${callType} call (Realtime API)...`);
+    console.log(`Starting ${callType} call (Standard API)...`);
     callStatus.textContent = `Initializing ${callType} call...`;
 
-    // 1. Get Supabase Auth Token (might be needed for backend auth)
+    // 1. Get Supabase Auth Token (JWT)
     const { data: { session }, error: sessionError } = await _supabase.auth.getSession();
     if (sessionError || !session) {
         console.error('Error getting session or no active session:', sessionError);
@@ -187,306 +189,130 @@ async function startCall(callType) {
         callStatus.textContent = 'Auth error.';
         return;
     }
-    const supabaseAccessToken = session.access_token;
+    const accessToken = session.access_token;
     console.log('Got Supabase Access Token.');
 
-    // 2. Get Ephemeral OpenAI Session Token from our Backend
-    let ephemeralToken;
-    try {
-        console.log('Requesting ephemeral token from backend...');
-        // Ensure BACKEND_API_URL is defined from config.js
-        if (typeof BACKEND_API_URL === 'undefined') {
-            throw new Error('BACKEND_API_URL is not defined in config.js');
-        }
-        const apiUrl = `${BACKEND_API_URL}/api/create-realtime-session`; 
-        console.log(`Fetching from: ${apiUrl}`);
-
-        const response = await fetch(apiUrl, { // Use the full backend URL
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // Include Supabase token if backend verifies it
-                // 'Authorization': `Bearer ${supabaseAccessToken}` 
-            },
-            // body: JSON.stringify({}) // No body needed unless sending user ID etc.
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.client_secret) {
-            console.error('Error fetching ephemeral token:', response.status, data);
-            alert(`Error initializing call: ${data.error || 'Failed to get session token'}`);
-            callStatus.textContent = 'Init error.';
-            return;
-        }
-        ephemeralToken = data.client_secret;
-        console.log('Received ephemeral OpenAI token.');
-
-    } catch (error) {
-        console.error('Exception fetching ephemeral token:', error);
-        alert('Error contacting server to initialize call.');
-        callStatus.textContent = 'Server error.';
+     // Check for BACKEND_API_URL which contains the base URL for WS
+     if (typeof BACKEND_API_URL === 'undefined') {
+        console.error('BACKEND_API_URL is not defined in config.js');
+        alert('Configuration error: Backend URL not set.');
+        callStatus.textContent = 'Config error.';
         return;
     }
+    // Construct WebSocket URL for OUR backend
+    // Assumes BACKEND_API_URL is like https://... We need wss://...
+    const backendBaseUrl = BACKEND_API_URL.replace(/^http/i, 'ws');
+    const backendWsUrl = `${backendBaseUrl}?token=${accessToken}`;
+    console.log(`Backend WebSocket URL: ${backendWsUrl}`);
 
-    // 3. Request Microphone Access
+    // 2. Request Microphone Access
     let stream;
     try {
-        // Note: If backend expects pcm16 @ 24kHz, getUserMedia might not guarantee that.
-        // Browser usually provides opus/webm. Backend's `input_audio_format` 
-        // might need to match what browser provides, or transcoding needed.
-        // For now, stick with default audio constraints.
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         console.log('Microphone access granted.');
     } catch (err) {
-        console.error('Error getting microphone access:', err);
-        alert('Microphone access denied. Please allow microphone access in your browser settings.');
-        callStatus.textContent = 'Mic access denied.';
-        return;
+         console.error('Error getting microphone access:', err);
+         alert('Microphone access denied.');
+         callStatus.textContent = 'Mic access denied.';
+         return;
     }
 
-    // 4. Establish WebSocket Connection to OpenAI Realtime API
-    const openaiWsUrl = 'wss://api.openai.com/v1/realtime'; // Base URL
-    const connectionUrl = `${openaiWsUrl}?token=${ephemeralToken}`; // <-- Try adding token as query param
-    console.log(`Connecting to OpenAI WebSocket: ${connectionUrl}`);
-    callStatus.textContent = 'Connecting to OpenAI...';
+    // 3. Establish WebSocket Connection to OUR Backend
+    console.log(`Connecting to Backend WebSocket: ${backendWsUrl}`);
+    callStatus.textContent = 'Connecting to server...';
+    websocket = new WebSocket(backendWsUrl);
 
-    // Use the ephemeral token for Authorization
-    // Remove the invalid subprotocol attempt
-    window.openaiWebsocket = new WebSocket(connectionUrl);
-    
-    // If the above fails, maybe the token goes in the URL? (Less secure)
-    // window.openaiWebsocket = new WebSocket(`${openaiWsUrl}?token=${ephemeralToken}`);
-
-
-    // 5. OpenAI WebSocket Event Handlers (New Implementation Needed)
-    window.openaiWebsocket.onopen = () => {
-        console.log('OpenAI WebSocket connection established.');
-        callStatus.textContent = 'Connected to AI. Speak now...';
-        // Start recording and sending audio (Needs modification for Base64 & JSON format)
-        setupMediaRecorder(stream); 
+    // 4. Backend WebSocket Event Handlers
+    websocket.onopen = () => {
+        console.log('Backend WebSocket connection established.');
+        callStatus.textContent = `${callType} call connected. Speak now...`;
+        setupMediaRecorder(stream);
         mediaRecorder.start(1000); 
-        console.log('MediaRecorder started (Realtime API).');
-        // Send session update if needed? Configuration might be done via REST.
+        console.log('MediaRecorder started.');
     };
 
-    window.openaiWebsocket.onmessage = (event) => {
-        // Handle REALTIME API specific messages (JSON)
+    websocket.onmessage = (event) => {
+        // Handle messages from OUR backend 
         try {
             const message = JSON.parse(event.data);
-            console.log('Received OpenAI message:', message.type, message);
+            console.log('Message received from server:', message);
             
-            switch(message.type) {
-                case 'session.created':
-                    // Handle session confirmation
-                    console.log('OpenAI session created:', message.session);
-                    break;
-                case 'conversation.item.input_audio_transcription.completed':
-                    // Display transcription for debugging/info
-                    console.log('Transcription received:', message.transcript);
-                    // Don't necessarily display this to user, it's just Whisper's view
-                    // callStatus.textContent = `You said: ${message.transcript}`; // Example display
-                    break;
-                 case 'response.text.delta':
-                    // Append text deltas to UI (for text responses)
-                    // TODO: Add a specific UI element for text responses
-                    console.log('Text delta:', message.delta);
-                     callStatus.textContent += message.delta;
-                    break;
-                 case 'response.audio.delta':
-                    // Decode Base64 audio chunk and queue for playback
-                    if (message.delta) {
-                        playAudio(message.delta); // Pass Base64 chunk to playback function
-                    }
-                    break;
-                 case 'response.done':
-                    console.log('AI Response finished.');
-                    callStatus.textContent = 'AI finished speaking.'; // Reset status
-                    // Potentially re-enable mic or wait for user input
-                    break;
-                 case 'error':
-                    console.error('OpenAI Realtime API Error:', message.error);
-                    callStatus.textContent = `Error: ${message.error?.message || 'Unknown error'}`;
-                    break;
-                 // Handle other events like session.updated, conversation items, etc.
-                 default:
-                    console.log('Unhandled message type:', message.type);
+            if (message.type === 'status') {
+                callStatus.textContent = message.message;
+            } else if (message.type === 'transcript') {
+                // Display transcription received from backend for debugging
+                callStatus.textContent = `Transcript: ${message.text}`; 
+                // TODO: Later, feed this text into GPT, get TTS, play audio
+            } else if (message.type === 'error') {
+                console.error('Received error from backend:', message.message);
+                callStatus.textContent = `Server Error: ${message.message}`;
+            } else {
+                 console.log('Unhandled message type from server:', message.type);
             }
         } catch (e) {
-            console.error('Failed to parse incoming message or handle event:', event.data, e);
+            console.error('Failed to parse incoming server message or handle event:', event.data, e);
+            // Display raw message if not JSON
+             callStatus.textContent = `Server: ${event.data}`;
         }
     };
 
-    window.openaiWebsocket.onerror = (error) => {
-        console.error('OpenAI WebSocket error:', error);
-        callStatus.textContent = 'AI connection error.';
-        // Clean up
+    websocket.onerror = (error) => {
+        console.error('Backend WebSocket error:', error);
+        callStatus.textContent = 'Connection error.';
     };
 
-    window.openaiWebsocket.onclose = (event) => {
-        console.log('OpenAI WebSocket connection closed:', event.code, event.reason);
-        callStatus.textContent = 'Call disconnected from AI.';
-        if (window.mediaRecorder && window.mediaRecorder.state === 'recording') {
-            window.mediaRecorder.stop();
+    websocket.onclose = (event) => {
+        console.log('Backend WebSocket connection closed:', event.code, event.reason);
+        callStatus.textContent = 'Call disconnected.';
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
         }
-        // Clean up stream tracks
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
         }
-        window.openaiWebsocket = null;
-        window.mediaRecorder = null;
+        websocket = null;
+        mediaRecorder = null;
     };
 }
 
-// --- Modify setupMediaRecorder and add Base64 conversion ---
-// ... (loadJournalEntries remains the same) ...
+// --- Restore MediaRecorder setup to send Blob --- 
 
-// --- Implement Audio Playback --- 
-let audioContext;
-let audioQueue = [];
-let isPlaying = false;
-
-function playAudio(base64AudioChunk) {
-    try {
-        // Decode Base64 string to ArrayBuffer
-        const byteString = atob(base64AudioChunk);
-        const len = byteString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = byteString.charCodeAt(i);
-        }
-        const arrayBuffer = bytes.buffer;
-
-        // Queue the ArrayBuffer
-        audioQueue.push(arrayBuffer);
-        // Start playback if not already playing
-        if (!isPlaying) {
-            playNextChunk();
-        }
-    } catch (e) {
-        console.error("Error decoding or queueing audio chunk:", e);
-    }
-}
-
-async function playNextChunk() {
-    if (audioQueue.length === 0) {
-        isPlaying = false;
-        return; // No more chunks to play
-    }
-    isPlaying = true;
-
-    if (!audioContext) {
-        try {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) {
-            console.error("Web Audio API is not supported in this browser.", e);
-            alert("Audio playback not supported in this browser.");
-            isPlaying = false;
-            audioQueue = []; // Clear queue if context fails
-            return;
-        }
-    }
-    // Resume context if needed (e.g., after user interaction)
-    if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-    }
-
-    const arrayBuffer = audioQueue.shift(); // Get the next chunk
-
-    try {
-        // Decode the audio data
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.onended = playNextChunk; // Play the next chunk when this one finishes
-        source.start(0); // Play immediately
-    } catch (e) {
-        console.error("Error decoding or playing audio data:", e);
-        // Skip this chunk and try the next one
-        playNextChunk(); 
-    }
-}
-
-// function stopCall() { ... } // Keep placeholder
-
-// --- ATTACH CALL BUTTON LISTENERS ... (rest of file remains the same) ...
-
-// Placeholder functions for MediaRecorder/Audio (keep them defined here)
 function setupMediaRecorder(stream) {
-    // ... (Try preferred mimeType, fallback) ...
     const options = { mimeType: 'audio/webm;codecs=opus' }; 
      try {
-         window.mediaRecorder = new MediaRecorder(stream, options);
+         mediaRecorder = new MediaRecorder(stream, options);
      } catch (e) {
          console.warn('Preferred mimeType failed, trying default:', e);
-         window.mediaRecorder = new MediaRecorder(stream);
+         mediaRecorder = new MediaRecorder(stream);
      }
-     console.log('Using mimeType:', window.mediaRecorder.mimeType);
+     console.log('Using mimeType:', mediaRecorder.mimeType);
 
-    window.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && window.openaiWebsocket && window.openaiWebsocket.readyState === WebSocket.OPEN) {
-            // --- Convert Blob to Base64 --- 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                // Result contains data:audio/webm;base64,...... 
-                // Extract base64 part
-                const base64Audio = reader.result.split(',')[1];
-                if (base64Audio) {
-                    // Send JSON message with base64 audio
-                    const message = {
-                        type: "input_audio_buffer.append",
-                        audio: base64Audio
-                        // event_id: `evt_${Date.now()}` // Optional event ID
-                    };
-                    // console.log('Sending audio buffer append message...'); // Verbose
-                    window.openaiWebsocket.send(JSON.stringify(message));
-                } else {
-                    console.error('Failed to extract Base64 data from audio blob.');
-                }
-            };
-            reader.onerror = (error) => {
-                console.error('FileReader error:', error);
-            };
-            reader.readAsDataURL(event.data);
-        } else {
-            // console.log('Audio chunk not sent (size 0 or WebSocket closed).');
-        }
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
+            // Send audio blob directly to our backend
+            // console.log(`Sending audio chunk: ${event.data.size} bytes`); 
+            websocket.send(event.data); 
+        } 
     };
-    // ... (onstop, onerror remain similar) ...
-     window.mediaRecorder.onstop = () => {
+    
+     mediaRecorder.onstop = () => {
          console.log('Recording stopped.');
-         // Send commit message if VAD is off? Check Realtime API docs if needed.
-         // if (window.openaiWebsocket && window.openaiWebsocket.readyState === WebSocket.OPEN) {
-         //     window.openaiWebsocket.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
-         // }
      };
-     window.mediaRecorder.onerror = (event) => {
+     mediaRecorder.onerror = (event) => {
          console.error('MediaRecorder error:', event.error);
      };
 }
 
-// --- ATTACH CALL BUTTON LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
+// --- Remove Realtime API Audio Playback --- 
+// let audioContext;
+// let audioQueue = [];
+// let isPlaying = false;
+// function playAudio(...) { ... }
+// function playNextChunk() { ... }
+
+// function stopCall() { ... } // Keep placeholder
+
+// --- Call Button Listeners (remain at end) ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Ensure DOM is fully loaded before attaching listeners to buttons
-    const morningCallBtn = document.getElementById('morning-call-button');
-    const eveningCallBtn = document.getElementById('evening-call-button');
-
-    if (morningCallBtn) {
-        morningCallBtn.addEventListener('click', () => {
-            console.log('Morning Call Button Clicked!');
-            startCall('morning');
-        });
-    } else {
-        console.error('Morning call button not found!');
-    }
-
-    if (eveningCallBtn) {
-        eveningCallBtn.addEventListener('click', () => {
-            console.log('Evening Call Button Clicked!');
-            startCall('evening');
-        });
-    } else {
-        console.error('Evening call button not found!');
-    }
+    // ... (listeners remain the same) ...
 });
