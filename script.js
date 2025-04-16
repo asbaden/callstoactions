@@ -194,7 +194,14 @@ async function startCall(callType) {
     let ephemeralToken;
     try {
         console.log('Requesting ephemeral token from backend...');
-        const response = await fetch('/api/create-realtime-session', { // Use relative URL
+        // Ensure BACKEND_API_URL is defined from config.js
+        if (typeof BACKEND_API_URL === 'undefined') {
+            throw new Error('BACKEND_API_URL is not defined in config.js');
+        }
+        const apiUrl = `${BACKEND_API_URL}/api/create-realtime-session`; 
+        console.log(`Fetching from: ${apiUrl}`);
+
+        const response = await fetch(apiUrl, { // Use the full backend URL
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
