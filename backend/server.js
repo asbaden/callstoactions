@@ -2,12 +2,12 @@ require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const cors = require('cors');
 const http = require('http'); // Required for WebSocket server
-const WebSocket = require('ws'); // WebSocket library
+// const WebSocket = require('ws'); // No longer handling WS connections here
 const { createClient } = require('@supabase/supabase-js'); // Supabase JS library
-const url = require('url'); // To parse URL query parameters
+// const url = require('url'); // No longer parsing WS URL here
 const OpenAI = require('openai'); // OpenAI library
-const { Readable } = require('stream'); // Import Readable stream
-const FormData = require('form-data'); // Require form-data library
+// const { Readable } = require('stream'); // Not needed for this approach
+// const FormData = require('form-data'); // Not needed for this approach
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -15,9 +15,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('Error: Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment variables.');
-    console.error('WebSocket connections will likely fail authentication.');
-    // Optionally exit: process.exit(1);
+    console.error('Warning: Missing SUPABASE_URL or SUPABASE_SERVICE_KEY. Required if adding protected backend routes later.');
 }
 // This admin client is used for privileged operations like verifying JWTs
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -27,8 +25,7 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 
 if (!openaiApiKey) {
     console.error('Error: Missing OPENAI_API_KEY in environment variables.');
-    console.error('Audio processing will fail.');
-    // Optionally exit: process.exit(1);
+    process.exit(1); // Exit if key is missing, as it's essential now
 }
 
 const openai = new OpenAI({ apiKey: openaiApiKey });
@@ -47,156 +44,79 @@ app.get('/', (req, res) => {
     res.send('CallToAction Backend (HTTP) is running!');
 });
 
-// --- HTTP Server Creation ---
-const server = http.createServer(app);
+// --- REST Endpoint to Create Realtime Session Token ---
+app.post('/api/create-realtime-session', async (req, res) => {
+    console.log('Received request to create realtime session...');
+    // Optional: Verify user authentication if needed (e.g., via Supabase JWT in Authorization header)
+    // const authHeader = req.headers.authorization;
+    // if (!authHeader || !authHeader.startsWith('Bearer ')) { ... return 401 ... }
+    // const token = authHeader.split(' ')[1];
+    // const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    // if (error || !user) { ... return 401 ... }
+    // console.log('Authenticated user:', user.id);
 
-// --- WebSocket Server Setup ---
-const wss = new WebSocket.Server({ server }); // Attach WebSocket server to HTTP server
-
-console.log('WebSocket server setup complete.');
-
-wss.on('connection', async (ws, req) => {
-    console.log('Incoming WebSocket connection attempt...');
-
-    // 1. Extract Token from URL
-    const queryParams = url.parse(req.url, true).query;
-    const token = queryParams.token;
-
-    if (!token) {
-        console.error('Connection attempt rejected: No token provided.');
-        ws.terminate(); // Close connection immediately
-        return;
-    }
-
-    // 2. Verify JWT using Supabase Admin Client
     try {
-        const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+        // Define desired session configuration
+        const sessionConfig = {
+            model: "gpt-4o-realtime-preview", // Or another suitable realtime model
+            modalities: ["audio", "text"], // Allow both audio input/output
+            instructions: "You are a friendly, supportive accountability buddy for recovery. Guide the user through their morning intention setting or evening reflection based on the 10th step principles. Keep responses concise and encouraging.", // Add your system prompt
+            // Add other parameters like voice, language, turn_detection as needed based on docs
+             voice: "alloy", // Example voice
+             input_audio_format: "pcm16", // Set desired format (needs frontend changes too if not default)
+             output_audio_format: "pcm16",
+             input_audio_transcription: { // Enable transcription for user input
+                model: "whisper-1" // Or "gpt-4o-transcribe"
+             },
+             turn_detection: null // Let frontend control turns for now
+        };
+        
+        console.log('Requesting OpenAI realtime session with config:', sessionConfig);
 
-        if (error || !user) {
-            console.error('Connection attempt rejected: Invalid token or failed user lookup.', error?.message || 'No user found');
-            ws.terminate();
-            return;
+        // Use fetch to call OpenAI REST endpoint
+        const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${openaiApiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(sessionConfig)
+        });
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+            console.error('Error creating OpenAI realtime session:', response.status, response.statusText, responseData);
+            return res.status(response.status || 500).json({ error: responseData.error?.message || 'Failed to create OpenAI session' });
         }
 
-        // 3. Token is valid - Connection Accepted
-        console.log(`WebSocket client connected successfully. User ID: ${user.id}, Email: ${user.email}`);
-        ws.isAlive = true; // For heartbeat/ping mechanism later if needed
-        ws.userId = user.id; // Store user ID on the connection object
-        ws.userEmail = user.email; // Store email for logging
-        ws.audioBuffer = []; // Initialize buffer for this client
+        if (!responseData.client_secret || !responseData.client_secret.value) {
+            console.error('Invalid response format from OpenAI session creation:', responseData);
+            return res.status(500).json({ error: 'Invalid response from OpenAI session API' });
+        }
 
-        // Send a welcome message (optional)
-        ws.send(JSON.stringify({ type: 'status', message: 'Connection successful. Ready for audio.' }));
+        console.log('Successfully created OpenAI realtime session. Returning client_secret.');
+        // Return only the necessary ephemeral token value to the client
+        res.json({ client_secret: responseData.client_secret.value });
 
-        // 4. Handle Messages from this Client
-        ws.on('message', async (message) => {
-            // Check if the message is audio data (binary Blob)
-            if (message instanceof Buffer || message instanceof ArrayBuffer || typeof message === 'object') {
-                console.log(`Received audio chunk from ${ws.userEmail}: ${message.length} bytes`);
-                ws.audioBuffer.push(Buffer.from(message)); // Add chunk to buffer
-
-                // Simple threshold for transcription (e.g., after ~5 seconds of audio at 1 chunk/sec)
-                // A more robust solution would use silence detection or fixed time intervals
-                const totalBufferSize = ws.audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
-                console.log(`Current buffer size: ${totalBufferSize} bytes`);
-
-                // Adjust this threshold as needed
-                const TRANSCRIPTION_THRESHOLD_BYTES = 100000; // Example: ~100KB
-
-                if (totalBufferSize > TRANSCRIPTION_THRESHOLD_BYTES) {
-                    console.log(`Buffer threshold reached (${totalBufferSize} bytes). Sending for transcription...`);
-                    const completeBuffer = Buffer.concat(ws.audioBuffer);
-                    ws.audioBuffer = []; // Clear buffer after sending
-
-                    let filename = `audio_${ws.userId}_${Date.now()}.webm`;
-                    try {
-                        // --- Manually construct FormData and use fetch --- 
-                        const formData = new FormData();
-                        formData.append('file', completeBuffer, { filename: filename, contentType: 'audio/webm' });
-                        formData.append('model', 'whisper-1');
-
-                        console.log(`Attempting transcription via fetch with FormData (filename: ${filename}, size: ${completeBuffer.length})`);
-
-                        const whisperUrl = 'https://api.openai.com/v1/audio/transcriptions';
-                        
-                        const response = await fetch(whisperUrl, {
-                            method: 'POST',
-                            headers: {
-                                ...formData.getHeaders(), // Include boundary and content-type
-                                'Authorization': `Bearer ${openaiApiKey}`,
-                            },
-                            body: formData, // Pass FormData object directly
-                        });
-
-                        const responseData = await response.json();
-
-                        if (!response.ok) {
-                             // Throw an error to be caught by the catch block
-                             // Include details from the response if possible
-                             const errorPayload = {
-                                 status: response.status,
-                                 statusText: response.statusText,
-                                 message: `API request failed: ${response.statusText}`,
-                                 responseBody: responseData
-                             };
-                             console.error('Whisper API Error Response:', errorPayload);
-                             throw new Error(responseData.error?.message || `HTTP error! status: ${response.status}`);
-                        }
-                        
-                        if (!responseData || !responseData.text) {
-                            console.error('Invalid transcription response format:', responseData);
-                            throw new Error('Invalid response format from transcription API');
-                        }
-
-                        const transcriptText = responseData.text;
-                        console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
-                        ws.send(JSON.stringify({ type: 'transcript', text: transcriptText }));
-
-                    } catch (transcriptionError) {
-                        console.error(`Error during transcription fetch for ${ws.userEmail} (Filename: ${filename}):`, transcriptionError);
-                        // Log additional details if it came from our thrown error
-                        if(transcriptionError.responseBody){
-                             console.error('API Response Body on Error:', transcriptionError.responseBody);
-                        }
-                        console.error(`Failed to transcribe buffer of size: ${completeBuffer?.length || 'N/A'}`);
-                        // Detailed logging of specific OpenAI API errors might be less direct here,
-                        // rely on the logged response body
-                        ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed.' }));
-                    }
-                }
-            } else {
-                // Handle non-binary messages if needed (e.g., control messages)
-                console.log(`Received text/control message from ${ws.userEmail}: ${message}`);
-            }
-        });
-
-        // 5. Handle Client Disconnect
-        ws.on('close', () => {
-            console.log(`WebSocket client disconnected: ${ws.userEmail} (User ID: ${ws.userId})`);
-            // Clean up any resources associated with this client if needed
-        });
-
-        // 6. Handle Errors for this Client
-        ws.on('error', (error) => {
-            console.error(`WebSocket error for user ${ws.userEmail} (User ID: ${ws.userId}):`, error);
-        });
-
-    } catch (verificationError) {
-        console.error('Exception during token verification:', verificationError);
-        ws.terminate();
+    } catch (error) {
+        console.error('Exception creating OpenAI realtime session:', error);
+        res.status(500).json({ error: 'Internal server error creating session' });
     }
 });
 
-// Optional: Heartbeat mechanism to detect broken connections
-// setInterval(() => {
-//     wss.clients.forEach((ws) => {
-//         if (!ws.isAlive) return ws.terminate();
-//         ws.isAlive = false;
-//         ws.ping(() => {}); // Send ping
-//     });
-// }, 30000); // Check every 30 seconds
+// --- Remove or Comment Out Old WebSocket Server Logic ---
+/*
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server }); 
+console.log('WebSocket server setup complete.');
+wss.on('connection', async (ws, req) => {
+    // ... old connection, auth, message handling logic ...
+});
+*/
 
-// --- Start the HTTP Server (which includes the WebSocket server) ---
-server.listen(port, () => {
-    console.log(`Backend server (HTTP + WebSocket) listening on port ${port}`);
+// --- Start the HTTP Server ONLY ---
+// Make sure to use app.listen, not server.listen if wss is removed/commented out
+app.listen(port, () => {
+    console.log(`Backend server (HTTP only) listening on port ${port}`);
 }); 
