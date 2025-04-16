@@ -312,7 +312,36 @@ function setupMediaRecorder(stream) {
 
 // function stopCall() { ... } // Keep placeholder
 
-// --- Call Button Listeners (remain at end) ---
+// --- ATTACH CALL BUTTON LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
-    // ... (listeners remain the same) ...
+    console.log('DOM fully loaded. Attaching call button listeners...'); // Log DOM loaded
+    
+    const morningCallBtn = document.getElementById('morning-call-button');
+    const eveningCallBtn = document.getElementById('evening-call-button');
+
+    // Log found elements
+    console.log('Morning call button element:', morningCallBtn);
+    console.log('Evening call button element:', eveningCallBtn);
+
+    if (morningCallBtn) {
+        morningCallBtn.addEventListener('click', () => {
+            // Log inside the listener callback itself
+            console.log('Morning Call Button Listener EXECUTED!'); 
+            startCall('morning');
+        });
+        console.log('Morning call listener attached.');
+    } else {
+        console.error('Morning call button not found! Cannot attach listener.');
+    }
+
+    if (eveningCallBtn) {
+        eveningCallBtn.addEventListener('click', () => {
+            // Log inside the listener callback itself
+            console.log('Evening Call Button Listener EXECUTED!'); 
+            startCall('evening');
+        });
+        console.log('Evening call listener attached.');
+    } else {
+        console.error('Evening call button not found! Cannot attach listener.');
+    }
 });
