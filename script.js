@@ -212,9 +212,12 @@ async function startCall(callType) {
     websocket.onopen = () => {
         console.log('WebSocket connection established.');
         callStatus.textContent = `${callType} call connected. Speak now...`;
-        // Start recording and sending audio (TODO)
-        // setupMediaRecorder(stream);
-        // mediaRecorder.start(1000); // Send chunks every 1 second (adjust as needed)
+        // Start recording and sending audio
+        setupMediaRecorder(stream);
+        // Send chunks reasonably frequently for lower latency
+        // Adjust the timeslice (e.g., 1000ms = 1 second) based on testing
+        mediaRecorder.start(1000); 
+        console.log('MediaRecorder started.');
     };
 
     websocket.onmessage = (event) => {
@@ -261,14 +264,49 @@ async function startCall(callType) {
         audioChunks = [];
     };
 
-    // TODO: Add MediaRecorder setup
     // TODO: Add Audio Playback setup
 }
 
 // Placeholder functions for MediaRecorder/Audio (keep them defined here)
-// function setupMediaRecorder(stream) { ... }
-// function playAudio(audioBlob) { ... }
-// function stopCall() { ... }
+function setupMediaRecorder(stream) {
+    // Use options to potentially improve quality or compatibility
+    // Check browser compatibility for preferred mimeType if needed
+    const options = { mimeType: 'audio/webm;codecs=opus' }; 
+    try {
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn('Preferred mimeType failed, trying default:', e);
+        mediaRecorder = new MediaRecorder(stream);
+    }
+
+    console.log('Using mimeType:', mediaRecorder.mimeType);
+
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
+            // Send audio blob directly
+            // console.log(`Sending audio chunk: ${event.data.size} bytes`); // Optional: Verbose logging
+            websocket.send(event.data); 
+        } else {
+            // console.log('Audio chunk not sent (size 0 or WebSocket closed).');
+        }
+    };
+
+    mediaRecorder.onstop = () => {
+        console.log('Recording stopped.');
+        // Optionally send an end-of-stream signal if needed by the backend
+        // if (websocket && websocket.readyState === WebSocket.OPEN) {
+        //     websocket.send(JSON.stringify({ type: 'stream_end' }));
+        // }
+    };
+
+    mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event.error);
+        // Handle recorder errors if necessary
+    };
+}
+
+// function playAudio(audioBlob) { ... } // Keep placeholder
+// function stopCall() { ... } // Keep placeholder
 
 // --- ATTACH CALL BUTTON LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
