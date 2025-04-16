@@ -23,11 +23,18 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 
 if (!openaiApiKey) {
     console.error('Error: Missing OPENAI_API_KEY in environment variables.');
-    process.exit(1); // Exit if key is missing, as it's essential now
+    process.exit(1);
 }
 
 const openai = new OpenAI({ apiKey: openaiApiKey });
 console.log('OpenAI client initialized.');
+
+// Check if Realtime API is available
+const hasRealtimeAPI = typeof openai.realtime !== 'undefined' && typeof openai.realtime.sessions !== 'undefined';
+console.log(`OpenAI Realtime API ${hasRealtimeAPI ? 'is' : 'is NOT'} available.`);
+if (!hasRealtimeAPI) {
+    console.log('Using fallback transcription approach.');
+}
 
 // --- Express App Setup ---
 const app = express();
@@ -44,6 +51,14 @@ app.get('/', (req, res) => {
 
 // --- Create Realtime Session API Route ---
 app.post('/api/create-realtime-session', async (req, res) => {
+    if (!hasRealtimeAPI) {
+        res.status(501).json({ 
+            error: 'Realtime API not available',
+            details: 'The server is using an older version of the OpenAI SDK that does not support the Realtime API.'
+        });
+        return;
+    }
+    
     try {
         // Create a Realtime session with OpenAI
         const session = await openai.realtime.sessions.create({
@@ -99,120 +114,176 @@ wss.on('connection', async (ws, req) => {
         console.log(`WebSocket client connected: ${user.email}`);
         ws.userId = user.id;
         ws.userEmail = user.email;
+        
+        // Set up audio buffer for fallback approach
+        if (!hasRealtimeAPI) {
+            ws.audioBuffer = [];
+        }
 
         // Create a new Realtime session for this user
-        try {
-            const session = await openai.realtime.sessions.create({
-                model: "gpt-4o-realtime-preview",
-                modalities: ["audio", "text"],
-                voice: "echo",
-                input_audio_format: "webm",
-                output_audio_format: "webm",
-                input_audio_transcription: {
-                    model: "whisper-1"
-                },
-                turn_detection: {
-                    type: "server_vad",
-                    threshold: 0.5
-                }
-            });
-            
-            // Connect to OpenAI Realtime WebSocket
-            const openaiWs = new WebSocket(
-                `wss://api.openai.com/v1/realtime/ws?session_id=${session.id}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${session.client_secret.value}`
+        if (hasRealtimeAPI) {
+            try {
+                const session = await openai.realtime.sessions.create({
+                    model: "gpt-4o-realtime-preview",
+                    modalities: ["audio", "text"],
+                    voice: "echo",
+                    input_audio_format: "webm",
+                    output_audio_format: "webm",
+                    input_audio_transcription: {
+                        model: "whisper-1"
+                    },
+                    turn_detection: {
+                        type: "server_vad",
+                        threshold: 0.5
                     }
-                }
-            );
-
-            openaiWs.on('open', () => {
-                console.log(`OpenAI Realtime WebSocket connected for ${user.email}`);
+                });
                 
-                // Initialize session
-                const sessionUpdate = {
-                    type: "session.update",
-                    session: {
-                        turn_detection: { type: "server_vad" },
-                        input_audio_format: "webm",
-                        output_audio_format: "webm",
-                        input_audio_transcription: {
-                            model: "whisper-1"
-                        },
-                        voice: "echo",
-                        instructions: "You are CallsToAction, a helpful voice assistant.",
-                        modalities: ["text", "audio"],
-                        temperature: 0.8,
+                // Connect to OpenAI Realtime WebSocket
+                const openaiWs = new WebSocket(
+                    `wss://api.openai.com/v1/realtime/ws?session_id=${session.id}`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${session.client_secret.value}`
+                        }
                     }
-                };
-                openaiWs.send(JSON.stringify(sessionUpdate));
-                
-                // Store the OpenAI WebSocket connection
-                openaiConnections.set(ws.userId, openaiWs);
-                
-                // Notify client that we're ready
-                ws.send(JSON.stringify({ type: 'status', message: 'Connection successful. Ready for audio.' }));
-            });
+                );
 
-            openaiWs.on('message', (message) => {
-                try {
-                    const data = JSON.parse(message.toString());
-                    console.log(`OpenAI message received:`, data.type);
+                openaiWs.on('open', () => {
+                    console.log(`OpenAI Realtime WebSocket connected for ${user.email}`);
                     
-                    // Handle transcription events
-                    if (data.type === 'conversation.item.input_audio_transcription.completed') {
-                        console.log(`Transcription result for ${ws.userEmail}:`, data.transcript);
-                        ws.send(JSON.stringify({ 
-                            type: 'transcript', 
-                            text: data.transcript 
-                        }));
-                    }
+                    // Initialize session
+                    const sessionUpdate = {
+                        type: "session.update",
+                        session: {
+                            turn_detection: { type: "server_vad" },
+                            input_audio_format: "webm",
+                            output_audio_format: "webm",
+                            input_audio_transcription: {
+                                model: "whisper-1"
+                            },
+                            voice: "echo",
+                            instructions: "You are CallsToAction, a helpful voice assistant.",
+                            modalities: ["text", "audio"],
+                            temperature: 0.8,
+                        }
+                    };
+                    openaiWs.send(JSON.stringify(sessionUpdate));
                     
-                    // Forward other relevant messages to client
-                    if (data.type === 'response.text.delta' || 
-                        data.type === 'response.audio.delta' ||
-                        data.type === 'error') {
-                        ws.send(JSON.stringify(data));
+                    // Store the OpenAI WebSocket connection
+                    openaiConnections.set(ws.userId, openaiWs);
+                    
+                    // Notify client that we're ready
+                    ws.send(JSON.stringify({ type: 'status', message: 'Connection successful. Ready for audio.' }));
+                });
+
+                openaiWs.on('message', (message) => {
+                    try {
+                        const data = JSON.parse(message.toString());
+                        console.log(`OpenAI message received:`, data.type);
+                        
+                        // Handle transcription events
+                        if (data.type === 'conversation.item.input_audio_transcription.completed') {
+                            console.log(`Transcription result for ${ws.userEmail}:`, data.transcript);
+                            ws.send(JSON.stringify({ 
+                                type: 'transcript', 
+                                text: data.transcript 
+                            }));
+                        }
+                        
+                        // Forward other relevant messages to client
+                        if (data.type === 'response.text.delta' || 
+                            data.type === 'response.audio.delta' ||
+                            data.type === 'error') {
+                            ws.send(JSON.stringify(data));
+                        }
+                    } catch (error) {
+                        console.error('Error parsing OpenAI message:', error);
                     }
-                } catch (error) {
-                    console.error('Error parsing OpenAI message:', error);
-                }
-            });
+                });
 
-            openaiWs.on('error', (error) => {
-                console.error(`OpenAI WebSocket error for ${user.email}:`, error);
-                ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection error' }));
-            });
+                openaiWs.on('error', (error) => {
+                    console.error(`OpenAI WebSocket error for ${user.email}:`, error);
+                    ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection error' }));
+                });
 
-            openaiWs.on('close', () => {
-                console.log(`OpenAI WebSocket closed for ${user.email}`);
-                openaiConnections.delete(ws.userId);
-            });
+                openaiWs.on('close', () => {
+                    console.log(`OpenAI WebSocket closed for ${user.email}`);
+                    openaiConnections.delete(ws.userId);
+                });
 
-        } catch (sessionError) {
-            console.error('Error creating OpenAI Realtime session:', sessionError);
+            } catch (sessionError) {
+                console.error('Error creating OpenAI Realtime session:', sessionError);
+                ws.send(JSON.stringify({ 
+                    type: 'error', 
+                    message: 'Failed to create OpenAI Realtime session'
+                }));
+                return;
+            }
+        } else {
+            // Notify client that we're using fallback approach
             ws.send(JSON.stringify({ 
-                type: 'error', 
-                message: 'Failed to create OpenAI Realtime session'
+                type: 'status', 
+                message: 'Connection successful. Using standard transcription. Ready for audio.'
             }));
-            return;
         }
 
         // Handle incoming audio from client
         ws.on('message', async (message) => {
             if (message instanceof Buffer || message instanceof ArrayBuffer || typeof message === 'object') {
-                const openaiWs = openaiConnections.get(ws.userId);
-                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-                    // Send audio to OpenAI
-                    const audioAppendEvent = {
-                        type: "input_audio_buffer.append",
-                        audio: Buffer.from(message).toString('base64')
-                    };
-                    openaiWs.send(JSON.stringify(audioAppendEvent));
+                if (hasRealtimeAPI) {
+                    const openaiWs = openaiConnections.get(ws.userId);
+                    if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                        // Send audio to OpenAI
+                        const audioAppendEvent = {
+                            type: "input_audio_buffer.append",
+                            audio: Buffer.from(message).toString('base64')
+                        };
+                        openaiWs.send(JSON.stringify(audioAppendEvent));
+                    } else {
+                        console.error(`OpenAI WebSocket not available for ${ws.userEmail}`);
+                        ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection not available' }));
+                    }
                 } else {
-                    console.error(`OpenAI WebSocket not available for ${ws.userEmail}`);
-                    ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection not available' }));
+                    // Fallback approach: collect audio chunks
+                    console.log(`Received audio chunk from ${ws.userEmail}: ${message.length} bytes`);
+                    ws.audioBuffer.push(Buffer.from(message));
+                    const totalBufferSize = ws.audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
+                    console.log(`Current buffer size: ${totalBufferSize} bytes`);
+
+                    const TRANSCRIPTION_THRESHOLD_BYTES = 100000; 
+                    if (totalBufferSize > TRANSCRIPTION_THRESHOLD_BYTES) {
+                        console.log(`Buffer threshold reached (${totalBufferSize} bytes). Sending for transcription...`);
+                        const completeBuffer = Buffer.concat(ws.audioBuffer);
+                        ws.audioBuffer = []; // Clear buffer after sending
+
+                        try {
+                            console.log(`Attempting direct buffer transcription for ${ws.userEmail} (${completeBuffer.length} bytes)`);
+                            
+                            const transcription = await openai.audio.transcriptions.create({
+                                file: completeBuffer,
+                                model: 'whisper-1',
+                                file_name: `audio_${ws.userId}_${Date.now()}.webm` // Just for identification
+                            });
+
+                            const transcriptText = transcription.text;
+                            console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
+                            ws.send(JSON.stringify({ type: 'transcript', text: transcriptText }));
+
+                        } catch (transcriptionError) {
+                            console.error(`Error during transcription for ${ws.userEmail}:`, transcriptionError);
+                            
+                            // Log more details about the error
+                            if (transcriptionError.response) {
+                                console.error('API Error Status:', transcriptionError.response.status);
+                                console.error('API Error Data:', transcriptionError.response.data);
+                            } else {
+                                console.error('Detailed error:', transcriptionError);
+                            }
+                            
+                            console.error(`Failed to transcribe buffer of size: ${completeBuffer?.length || 'N/A'}`);
+                            ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed.' }));
+                        }
+                    }
                 }
             } else {
                 // Handle control messages from client

@@ -13,13 +13,10 @@
   "description": "",
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
-    "axios": "^1.8.4",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "form-data": "^4.0.2",
-    "node-fetch": "^3.3.2",
-    "openai": "^4.94.0",
+    "openai": "^4.120.0",
     "ws": "^8.18.1"
   }
 }
