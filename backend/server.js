@@ -109,18 +109,21 @@ wss.on('connection', async (ws, req) => {
 
                     let filename = `audio_${ws.userId}_${Date.now()}.webm`; // Define filename
                     try {
-                        // --- Convert Buffer to Readable Stream ---
-                        const audioStream = Readable.from(completeBuffer);
-                        // Add a path property, sometimes required by libraries processing streams as files
-                        audioStream.path = filename; 
+                        // --- Attempt passing Buffer directly --- 
+                        // Ensure it's definitely a Buffer object
+                        if (!Buffer.isBuffer(completeBuffer)) {
+                            throw new Error('Internal error: completeBuffer is not a Buffer');
+                        }
 
-                        // Log attempt with stream
-                        console.log(`Attempting transcription with ReadableStream (filename: ${filename}, size: ${completeBuffer.length})`);
+                        console.log(`Attempting transcription directly with Buffer (filename: ${filename}, size: ${completeBuffer.length})`);
 
                         const transcription = await openai.audio.transcriptions.create({
-                            // Pass the stream directly as the file
-                            file: audioStream, 
+                            // Pass the buffer directly. The library might create the form.
+                            file: completeBuffer, 
                             model: 'whisper-1',
+                            // We might need to provide filename/mime type via additional parameters if the library supports it
+                            // Check openai library documentation for how to specify filename for a buffer.
+                            // For now, relying on the library to handle the buffer as a file-like object.
                         });
 
                         console.log(`Transcription result for ${ws.userEmail}:`, transcription.text);
@@ -129,7 +132,6 @@ wss.on('connection', async (ws, req) => {
                     } catch (transcriptionError) {
                         console.error(`Error during transcription for ${ws.userEmail} (Filename: ${filename}):`, transcriptionError);
                         console.error(`Failed to transcribe buffer of size: ${completeBuffer?.length || 'N/A'}`);
-                        // Log API response details if available
                         if (transcriptionError instanceof OpenAI.APIError) {
                             console.error('OpenAI API Error Status:', transcriptionError.status);
                             console.error('OpenAI API Error Type:', transcriptionError.type);
