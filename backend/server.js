@@ -93,23 +93,8 @@ app.post('/api/openai-session', async (req, res) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "gpt-4o-realtime-preview", // Or your preferred model
-                modalities: ["audio", "text"],
-                voice: "echo", // Or your preferred voice
-                instructions: instructions,
-                input_audio_format: "pcm16", // Ensure client sends this format
-                output_audio_format: "pcm16", // Ensure client can handle this format
-                // Optional: Add other parameters like turn_detection, transcription config if needed
-                 turn_detection: { // Example: Use server VAD
-                     type: "server_vad",
-                     threshold: 0.5, // Adjust as needed
-                     silence_duration_ms: 700 // Adjust as needed
-                 },
-                 input_audio_transcription: { // Enable transcription if desired
-                      model: "whisper-1" // Or "gpt-4o-transcribe"
-                      // language: "en", // Optional: Specify language
-                      // prompt: "User is participating in a recovery check-in." // Optional: Provide context
-                 }
+                model: "gpt-4o-realtime-preview", 
+                modalities: ["audio", "text"]
             })
         });
 
