@@ -73,7 +73,7 @@ const { data: { subscription } } = _supabase.auth.onAuthStateChange((event, sess
     // Other events like TOKEN_REFRESHED, USER_UPDATED can be handled if needed
 });
 
-// --- Event Listeners (Attached AFTER setting up auth listener) ---
+// --- Event Listeners (Moved below function definitions) ---
 
 loginButton.addEventListener('click', async () => {
     console.log('Login button clicked');
@@ -99,8 +99,7 @@ logoutButton.addEventListener('click', async () => {
     }
 });
 
-// --- Placeholder Functions (to be implemented) ---
-
+// --- Journal Entry Loading Function ---
 async function loadJournalEntries() {
     if (!currentUser) {
         console.log('loadJournalEntries called, but no user logged in.');
@@ -156,16 +155,43 @@ async function loadJournalEntries() {
     }
 }
 
-document.getElementById('morning-call-button').addEventListener('click', () => {
-    console.log('Morning Call Button Clicked!'); // <-- Debug log
-    startCall('morning');
-});
-
-document.getElementById('evening-call-button').addEventListener('click', () => {
-    console.log('Evening Call Button Clicked!'); // <-- Debug log
-    startCall('evening');
-});
-
+// --- Call Functionality ---
 let websocket = null;
 let mediaRecorder = null;
-// ... (rest of startCall and related functions) ...
+let audioChunks = [];
+// NOTE: Use WS_URL from config.js (Make sure config.js is loaded before script.js)
+// const WS_URL = 'ws://localhost:3001'; // Example, actual value comes from config.js
+
+async function startCall(callType) {
+    // ... (startCall function code remains here) ...
+}
+
+// Placeholder functions for MediaRecorder/Audio (keep them defined here)
+// function setupMediaRecorder(stream) { ... }
+// function playAudio(audioBlob) { ... }
+// function stopCall() { ... }
+
+// --- ATTACH CALL BUTTON LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Ensure DOM is fully loaded before attaching listeners to buttons
+    const morningCallBtn = document.getElementById('morning-call-button');
+    const eveningCallBtn = document.getElementById('evening-call-button');
+
+    if (morningCallBtn) {
+        morningCallBtn.addEventListener('click', () => {
+            console.log('Morning Call Button Clicked!');
+            startCall('morning');
+        });
+    } else {
+        console.error('Morning call button not found!');
+    }
+
+    if (eveningCallBtn) {
+        eveningCallBtn.addEventListener('click', () => {
+            console.log('Evening Call Button Clicked!');
+            startCall('evening');
+        });
+    } else {
+        console.error('Evening call button not found!');
+    }
+});
