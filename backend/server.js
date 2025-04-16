@@ -5,6 +5,7 @@ const http = require('http'); // Required for WebSocket server
 const WebSocket = require('ws'); // WebSocket library
 const { createClient } = require('@supabase/supabase-js'); // Supabase JS library
 const url = require('url'); // To parse URL query parameters
+const OpenAI = require('openai'); // OpenAI library
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -18,6 +19,18 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 // This admin client is used for privileged operations like verifying JWTs
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+// --- Initialize OpenAI Client ---
+const openaiApiKey = process.env.OPENAI_API_KEY;
+
+if (!openaiApiKey) {
+    console.error('Error: Missing OPENAI_API_KEY in environment variables.');
+    console.error('Audio processing will fail.');
+    // Optionally exit: process.exit(1);
+}
+
+const openai = new OpenAI({ apiKey: openaiApiKey });
+console.log('OpenAI client initialized.');
 
 // --- Express App Setup ---
 const app = express();
@@ -68,19 +81,63 @@ wss.on('connection', async (ws, req) => {
         ws.isAlive = true; // For heartbeat/ping mechanism later if needed
         ws.userId = user.id; // Store user ID on the connection object
         ws.userEmail = user.email; // Store email for logging
+        ws.audioBuffer = []; // Initialize buffer for this client
 
         // Send a welcome message (optional)
         ws.send(JSON.stringify({ type: 'status', message: 'Connection successful. Ready for audio.' }));
 
         // 4. Handle Messages from this Client
-        ws.on('message', (message) => {
-            // Here we will receive audio chunks from the client
-            console.log(`Received message from ${ws.userEmail} (User ID: ${ws.userId}): ${message.length} bytes`);
-            // TODO: Process the received audio data (e.g., send to Whisper API)
-            // Example: processAudioChunk(ws, message);
-            
-            // Placeholder: Echo back for testing
-            // ws.send(JSON.stringify({ type: 'debug', receivedBytes: message.length }));
+        ws.on('message', async (message) => {
+            // Check if the message is audio data (binary Blob)
+            if (message instanceof Buffer || message instanceof ArrayBuffer || typeof message === 'object') {
+                console.log(`Received audio chunk from ${ws.userEmail}: ${message.length} bytes`);
+                ws.audioBuffer.push(Buffer.from(message)); // Add chunk to buffer
+
+                // Simple threshold for transcription (e.g., after ~5 seconds of audio at 1 chunk/sec)
+                // A more robust solution would use silence detection or fixed time intervals
+                const totalBufferSize = ws.audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
+                console.log(`Current buffer size: ${totalBufferSize} bytes`);
+
+                // Adjust this threshold as needed
+                const TRANSCRIPTION_THRESHOLD_BYTES = 100000; // Example: ~100KB
+
+                if (totalBufferSize > TRANSCRIPTION_THRESHOLD_BYTES) {
+                    console.log(`Buffer threshold reached (${totalBufferSize} bytes). Sending for transcription...`);
+                    const completeBuffer = Buffer.concat(ws.audioBuffer);
+                    ws.audioBuffer = []; // Clear buffer after sending
+
+                    try {
+                         // Convert buffer to a format Whisper API can read (like a file stream)
+                         // The openai library expects a Readable stream or specific object
+                         // Directly using the buffer might require adjustments based on the library version
+                        
+                        // Create a pseudo-file object for the API
+                        const audioFile = {
+                            content: completeBuffer,
+                            name: `audio_${ws.userId}_${Date.now()}.webm` // Use appropriate extension based on frontend mimeType
+                        };
+
+                        const transcription = await openai.audio.transcriptions.create({
+                            // file: fs.createReadStream('audio.mp3'), // Needs file system access, not ideal here
+                            file: audioFile, // Use the pseudo-file object
+                            model: 'whisper-1', 
+                        });
+
+                        console.log(`Transcription result for ${ws.userEmail}:`, transcription.text);
+                        
+                        // TODO: Send transcription.text to GPT
+                        // For now, send it back to client for debugging
+                        ws.send(JSON.stringify({ type: 'transcript', text: transcription.text }));
+
+                    } catch (transcriptionError) {
+                        console.error(`Error during transcription for ${ws.userEmail}:`, transcriptionError);
+                        ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed.' }));
+                    }
+                }
+            } else {
+                // Handle non-binary messages if needed (e.g., control messages)
+                console.log(`Received text/control message from ${ws.userEmail}: ${message}`);
+            }
         });
 
         // 5. Handle Client Disconnect
