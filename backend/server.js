@@ -106,31 +106,37 @@ wss.on('connection', async (ws, req) => {
                     const completeBuffer = Buffer.concat(ws.audioBuffer);
                     ws.audioBuffer = []; // Clear buffer after sending
 
+                    let filename = `audio_${ws.userId}_${Date.now()}.webm`; // Define filename
                     try {
-                         // Convert buffer to a format Whisper API can read (like a file stream)
-                         // The openai library expects a Readable stream or specific object
-                         // Directly using the buffer might require adjustments based on the library version
-                        
-                        // Create a pseudo-file object for the API
-                        const audioFile = {
-                            content: completeBuffer,
-                            name: `audio_${ws.userId}_${Date.now()}.webm` // Use appropriate extension based on frontend mimeType
+                        // Construct the parameter for the 'file' field
+                        const fileParam = {
+                           content: completeBuffer,
+                           name: filename
                         };
+                        // Log exactly what we are sending
+                        console.log(`Attempting transcription with fileParam: { name: ${fileParam.name}, content_length: ${fileParam.content?.length} }`);
 
                         const transcription = await openai.audio.transcriptions.create({
-                            // file: fs.createReadStream('audio.mp3'), // Needs file system access, not ideal here
-                            file: audioFile, // Use the pseudo-file object
-                            model: 'whisper-1', 
+                            file: fileParam, 
+                            model: 'whisper-1',
                         });
 
                         console.log(`Transcription result for ${ws.userEmail}:`, transcription.text);
-                        
-                        // TODO: Send transcription.text to GPT
-                        // For now, send it back to client for debugging
                         ws.send(JSON.stringify({ type: 'transcript', text: transcription.text }));
 
                     } catch (transcriptionError) {
-                        console.error(`Error during transcription for ${ws.userEmail}:`, transcriptionError);
+                        console.error(`Error during transcription for ${ws.userEmail} (Filename: ${filename}):`, transcriptionError);
+                        console.error(`Failed to transcribe buffer of size: ${completeBuffer?.length || 'N/A'}`);
+                        // Log API response details if available
+                        if (transcriptionError instanceof OpenAI.APIError) {
+                            console.error('OpenAI API Error Status:', transcriptionError.status);
+                            console.error('OpenAI API Error Type:', transcriptionError.type);
+                            console.error('OpenAI API Error Code:', transcriptionError.code);
+                            console.error('OpenAI API Error Param:', transcriptionError.param);
+                            console.error('OpenAI API Error Message:', transcriptionError.message);
+                        } else {
+                            console.error('Non-API Error during transcription:', transcriptionError);
+                        }
                         ws.send(JSON.stringify({ type: 'error', message: 'Transcription failed.' }));
                     }
                 }
