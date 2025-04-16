@@ -156,12 +156,16 @@ async function loadJournalEntries() {
     }
 }
 
-// document.getElementById('morning-call-button').addEventListener('click', () => {
-//     console.log('Start Morning Call clicked');
-//     // Initiate call logic
-// });
+document.getElementById('morning-call-button').addEventListener('click', () => {
+    console.log('Morning Call Button Clicked!'); // <-- Debug log
+    startCall('morning');
+});
 
-// document.getElementById('evening-call-button').addEventListener('click', () => {
-//     console.log('Start Evening Call clicked');
-//     // Initiate call logic
-// });
+document.getElementById('evening-call-button').addEventListener('click', () => {
+    console.log('Evening Call Button Clicked!'); // <-- Debug log
+    startCall('evening');
+});
+
+let websocket = null;
+let mediaRecorder = null;
+// ... (rest of startCall and related functions) ...
