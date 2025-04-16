@@ -279,26 +279,22 @@ wss.on('connection', async (ws, req) => {
                         try {
                             console.log(`Attempting transcription for ${ws.userEmail} (${completeBuffer.length} bytes)`);
                             
-                            // Create a temporary file with the correct extension
-                            const tempDir = os.tmpdir();
-                            const tempFile = path.join(tempDir, `audio_${ws.userId}_${Date.now()}.webm`);
-                            
-                            // Write buffer to file with the correct format extension
-                            fs.writeFileSync(tempFile, completeBuffer);
-                            console.log(`Written audio to temporary file: ${tempFile}`);
-                            
-                            // Make direct text-only transcription request
                             try {
-                                // Use file for transcription
-                                const transcription = await openai.audio.transcriptions.create({
-                                    file: fs.createReadStream(tempFile),
-                                    model: 'whisper-1',
-                                    response_format: 'json'
-                                });
+                                // Send directly to the API as base64 data
+                                console.log(`Attempting direct transcription using base64...`);
                                 
-                                // Clean up temp file
-                                fs.unlinkSync(tempFile);
-                                console.log(`Deleted temporary file: ${tempFile}`);
+                                // Convert buffer to base64
+                                const base64Audio = completeBuffer.toString('base64');
+                                
+                                const transcription = await openai.audio.transcriptions.create({
+                                    model: 'whisper-1',
+                                    response_format: 'json',
+                                    // Use direct base64 string, avoiding file system
+                                    file: {
+                                        bytes: completeBuffer,
+                                        name: `audio_${ws.userId}_${Date.now()}.webm`
+                                    }
+                                });
 
                                 const transcriptText = transcription.text;
                                 console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
@@ -360,77 +356,25 @@ wss.on('connection', async (ws, req) => {
                             } catch (transcriptionError) {
                                 console.error(`Error during transcription for ${ws.userEmail}:`, transcriptionError);
                                 
-                                // Try again with a different format if the first attempt failed
+                                // Always send a generic response if transcription fails
+                                const genericText = "I couldn't hear that clearly. Could you please repeat?";
+                                ws.send(JSON.stringify({ type: 'response.text.delta', delta: genericText }));
+                                
                                 try {
-                                    console.log("First transcription attempt failed, trying with mp3 conversion...");
-                                    
-                                    // Try to use speech API directly for transcription as a backup
-                                    const transcription = await openai.audio.transcriptions.create({
-                                        file: fs.createReadStream(tempFile),
-                                        model: 'whisper-1',
-                                        response_format: 'json',
-                                        temperature: 0.2  // Lower temperature for better accuracy
-                                    });
-                                    
-                                    const transcriptText = transcription.text;
-                                    console.log(`Transcription result from backup method for ${ws.userEmail}:`, transcriptText);
-                                    ws.send(JSON.stringify({ type: 'transcript', text: transcriptText }));
-                                    
-                                    // Process response same as above
-                                    const completion = await openai.chat.completions.create({
-                                        model: "gpt-4o",
-                                        messages: [
-                                            {
-                                                role: "system",
-                                                content: "You are CallsToAction, a helpful voice assistant. Keep responses short and conversational."
-                                            },
-                                            { 
-                                                role: "user", 
-                                                content: transcriptText 
-                                            }
-                                        ]
-                                    });
-                                    
-                                    // Same response processing as above
-                                    const responseText = completion.choices[0].message.content;
-                                    ws.send(JSON.stringify({ type: 'response.text.delta', delta: responseText }));
-                                    
-                                    // Generate and send speech
                                     const speechResponse = await openai.audio.speech.create({
                                         model: "tts-1",
                                         voice: "echo",
-                                        input: responseText
+                                        input: genericText
                                     });
                                     
                                     const buffer = Buffer.from(await speechResponse.arrayBuffer());
-                                    ws.send(JSON.stringify({ type: 'response.audio.delta', delta: buffer.toString('base64') }));
+                                    ws.send(JSON.stringify({ 
+                                        type: 'response.audio.delta', 
+                                        delta: buffer.toString('base64') 
+                                    }));
                                     
-                                } catch (backupError) {
-                                    console.error('Backup transcription also failed:', backupError);
-                                    
-                                    // If all else fails, just send a simple response to keep the interaction going
-                                    const genericText = "I couldn't hear that clearly. Could you please repeat?";
-                                    ws.send(JSON.stringify({ type: 'response.text.delta', delta: genericText }));
-                                    
-                                    try {
-                                        const speechResponse = await openai.audio.speech.create({
-                                            model: "tts-1",
-                                            voice: "echo",
-                                            input: genericText
-                                        });
-                                        
-                                        const buffer = Buffer.from(await speechResponse.arrayBuffer());
-                                        ws.send(JSON.stringify({ type: 'response.audio.delta', delta: buffer.toString('base64') }));
-                                        
-                                    } catch (speechError) {
-                                        console.error('Error generating speech for generic response:', speechError);
-                                    }
-                                } finally {
-                                    // Clean up temp file
-                                    if (fs.existsSync(tempFile)) {
-                                        fs.unlinkSync(tempFile);
-                                        console.log(`Deleted temporary file in finally block: ${tempFile}`);
-                                    }
+                                } catch (speechError) {
+                                    console.error('Error generating speech for generic response:', speechError);
                                 }
                             }
                         } catch (generalError) {
