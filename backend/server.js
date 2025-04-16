@@ -63,7 +63,8 @@ app.post('/api/create-realtime-session', async (req, res) => {
             instructions: "You are a friendly, supportive accountability buddy for recovery. Guide the user through their morning intention setting or evening reflection based on the 10th step principles. Keep responses concise and encouraging.", // Add your system prompt
             // Add other parameters like voice, language, turn_detection as needed based on docs
              voice: "alloy", // Example voice
-             input_audio_format: "pcm16", // Set desired format (needs frontend changes too if not default)
+             // Align input format with what browser MediaRecorder likely sends (Opus)
+             input_audio_format: "opus", // <-- CHANGED FROM pcm16
              output_audio_format: "pcm16",
              input_audio_transcription: { // Enable transcription for user input
                 model: "whisper-1" // Or "gpt-4o-transcribe"
