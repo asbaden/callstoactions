@@ -2,15 +2,10 @@ require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const cors = require('cors');
 const http = require('http'); // Required for WebSocket server
-const WebSocket = require('ws'); // Restore WebSocket library
+const WebSocket = require('ws'); // WebSocket library
 const { createClient } = require('@supabase/supabase-js'); // Supabase JS library
-const url = require('url'); // Restore URL parsing
+const url = require('url'); // For URL parsing
 const OpenAI = require('openai'); // OpenAI library
-const FormData = require('form-data'); // Restore form-data library
-const axios = require('axios'); // Require axios
-const fs = require('fs'); // For file system operations
-const path = require('path'); // For path manipulations
-const os = require('os'); // For temp directory
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
