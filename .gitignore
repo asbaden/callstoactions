@@ -1,0 +1,11 @@
+# Ignore Node.js dependencies
+backend/node_modules/
+
+# Ignore backend environment variables
+backend/.env
+
+# Ignore frontend config file (if we create one later)
+config.js
+
+# Ignore macOS system files
+.DS_Store 
