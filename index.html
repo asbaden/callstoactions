@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calls To Action - Accountability Buddy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Calls To Action</h1>
+    <p>Your AI Accountability Buddy for Recovery</p>
+
+    <div id="auth-section">
+        <!-- Authentication elements (e.g., login/signup buttons) will go here -->
+        <button id="login-button">Login / Sign Up</button> <!-- Simple placeholder -->
+        <button id="logout-button" style="display: none;">Logout</button>
+    </div>
+
+    <div id="call-controls" style="display: none;"> <!-- Hide initially until logged in -->
+        <h2>Daily Check-ins</h2>
+        <button id="morning-call-button">Start Morning Call</button>
+        <button id="evening-call-button">Start Evening Call</button>
+        <div id="call-status"></div> <!-- To show connection status, transcription, etc. -->
+    </div>
+
+    <div id="journal-section" style="display: none;"> <!-- Hide initially until logged in -->
+        <h2>Past Journal Entries</h2>
+        <div id="journal-entries"></div> <!-- Entries will be loaded here -->
+    </div>
+
+    <!-- Load Supabase config first -->
+    <script src="config.js"></script>
+    <!-- Load Supabase client library (we'll use the CDN for now) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Load your main application script -->
+    <script src="script.js"></script>
+</body>
+</html>
