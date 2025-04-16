@@ -126,6 +126,12 @@ app.post('/api/openai-session', async (req, res) => {
 
         const sessionData = JSON.parse(responseBody); // Parse successful response
         console.log("OpenAI session created successfully:", sessionData.id);
+        // Also log the client secret value for debugging/testing
+        if (sessionData.client_secret && sessionData.client_secret.value) {
+             console.log("Client Secret Value:", sessionData.client_secret.value);
+        } else {
+             console.warn("Client secret structure unexpected or missing in OpenAI response:", sessionData.client_secret);
+        }
 
         // 3. Return necessary data to the client
         res.json({ 
