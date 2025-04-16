@@ -6,6 +6,7 @@ const WebSocket = require('ws'); // WebSocket library
 const { createClient } = require('@supabase/supabase-js'); // Supabase JS library
 const url = require('url'); // For URL parsing
 const OpenAI = require('openai'); // OpenAI library
+const fetch = require('node-fetch');
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -51,31 +52,36 @@ app.get('/', (req, res) => {
 
 // --- Create Realtime Session API Route ---
 app.post('/api/create-realtime-session', async (req, res) => {
-    if (!hasRealtimeAPI) {
-        res.status(501).json({ 
-            error: 'Realtime API not available',
-            details: 'The server is using an older version of the OpenAI SDK that does not support the Realtime API.'
-        });
-        return;
-    }
-    
     try {
-        // Create a Realtime session with OpenAI
-        const session = await openai.realtime.sessions.create({
-            model: "gpt-4o-realtime-preview",
-            modalities: ["audio", "text"],
-            voice: "echo",
-            input_audio_format: "webm",
-            output_audio_format: "webm",
-            input_audio_transcription: {
-                model: "whisper-1"
+        // Create a Realtime session with direct HTTP request
+        const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${openaiApiKey}`,
+                'Content-Type': 'application/json'
             },
-            turn_detection: {
-                type: "server_vad",
-                threshold: 0.5
-            }
+            body: JSON.stringify({
+                model: "gpt-4o-realtime-preview",
+                modalities: ["audio", "text"],
+                voice: "echo",
+                input_audio_format: "webm",
+                output_audio_format: "webm",
+                input_audio_transcription: {
+                    model: "whisper-1"
+                },
+                turn_detection: {
+                    type: "server_vad",
+                    threshold: 0.5
+                }
+            })
         });
         
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`OpenAI API returned ${response.status}: ${JSON.stringify(errorData)}`);
+        }
+
+        const session = await response.json();
         res.json({ sessionId: session.id, clientSecret: session.client_secret });
     } catch (error) {
         console.error('Error creating Realtime session:', error);
@@ -115,15 +121,18 @@ wss.on('connection', async (ws, req) => {
         ws.userId = user.id;
         ws.userEmail = user.email;
         
-        // Set up audio buffer for fallback approach
-        if (!hasRealtimeAPI) {
-            ws.audioBuffer = [];
-        }
+        // Initialize audio buffer for the fallback approach
+        ws.audioBuffer = [];
 
-        // Create a new Realtime session for this user
-        if (hasRealtimeAPI) {
-            try {
-                const session = await openai.realtime.sessions.create({
+        try {
+            // Create a Realtime session with direct HTTP request
+            const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${openaiApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
                     model: "gpt-4o-realtime-preview",
                     modalities: ["audio", "text"],
                     voice: "echo",
@@ -136,91 +145,104 @@ wss.on('connection', async (ws, req) => {
                         type: "server_vad",
                         threshold: 0.5
                     }
-                });
-                
-                // Connect to OpenAI Realtime WebSocket
-                const openaiWs = new WebSocket(
-                    `wss://api.openai.com/v1/realtime/ws?session_id=${session.id}`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${session.client_secret.value}`
-                        }
-                    }
-                );
-
-                openaiWs.on('open', () => {
-                    console.log(`OpenAI Realtime WebSocket connected for ${user.email}`);
-                    
-                    // Initialize session
-                    const sessionUpdate = {
-                        type: "session.update",
-                        session: {
-                            turn_detection: { type: "server_vad" },
-                            input_audio_format: "webm",
-                            output_audio_format: "webm",
-                            input_audio_transcription: {
-                                model: "whisper-1"
-                            },
-                            voice: "echo",
-                            instructions: "You are CallsToAction, a helpful voice assistant.",
-                            modalities: ["text", "audio"],
-                            temperature: 0.8,
-                        }
-                    };
-                    openaiWs.send(JSON.stringify(sessionUpdate));
-                    
-                    // Store the OpenAI WebSocket connection
-                    openaiConnections.set(ws.userId, openaiWs);
-                    
-                    // Notify client that we're ready
-                    ws.send(JSON.stringify({ type: 'status', message: 'Connection successful. Ready for audio.' }));
-                });
-
-                openaiWs.on('message', (message) => {
-                    try {
-                        const data = JSON.parse(message.toString());
-                        console.log(`OpenAI message received:`, data.type);
-                        
-                        // Handle transcription events
-                        if (data.type === 'conversation.item.input_audio_transcription.completed') {
-                            console.log(`Transcription result for ${ws.userEmail}:`, data.transcript);
-                            ws.send(JSON.stringify({ 
-                                type: 'transcript', 
-                                text: data.transcript 
-                            }));
-                        }
-                        
-                        // Forward other relevant messages to client
-                        if (data.type === 'response.text.delta' || 
-                            data.type === 'response.audio.delta' ||
-                            data.type === 'error') {
-                            ws.send(JSON.stringify(data));
-                        }
-                    } catch (error) {
-                        console.error('Error parsing OpenAI message:', error);
-                    }
-                });
-
-                openaiWs.on('error', (error) => {
-                    console.error(`OpenAI WebSocket error for ${user.email}:`, error);
-                    ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection error' }));
-                });
-
-                openaiWs.on('close', () => {
-                    console.log(`OpenAI WebSocket closed for ${user.email}`);
-                    openaiConnections.delete(ws.userId);
-                });
-
-            } catch (sessionError) {
-                console.error('Error creating OpenAI Realtime session:', sessionError);
-                ws.send(JSON.stringify({ 
-                    type: 'error', 
-                    message: 'Failed to create OpenAI Realtime session'
-                }));
-                return;
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`OpenAI API returned ${response.status}: ${JSON.stringify(errorData)}`);
             }
-        } else {
-            // Notify client that we're using fallback approach
+
+            const session = await response.json();
+            
+            // Connect to OpenAI Realtime WebSocket
+            const openaiWs = new WebSocket(
+                `wss://api.openai.com/v1/realtime/ws?session_id=${session.id}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${session.client_secret.value}`
+                    }
+                }
+            );
+
+            openaiWs.on('open', () => {
+                console.log(`OpenAI Realtime WebSocket connected for ${user.email}`);
+                
+                // Initialize session
+                const sessionUpdate = {
+                    type: "session.update",
+                    session: {
+                        turn_detection: { type: "server_vad" },
+                        input_audio_format: "webm",
+                        output_audio_format: "webm",
+                        input_audio_transcription: {
+                            model: "whisper-1"
+                        },
+                        voice: "echo",
+                        instructions: "You are CallsToAction, a helpful voice assistant.",
+                        modalities: ["text", "audio"],
+                        temperature: 0.8,
+                    }
+                };
+                openaiWs.send(JSON.stringify(sessionUpdate));
+                
+                // Store the OpenAI WebSocket connection
+                openaiConnections.set(ws.userId, openaiWs);
+                
+                // Notify client that we're ready
+                ws.send(JSON.stringify({ type: 'status', message: 'Connection successful. Ready for audio.' }));
+            });
+
+            openaiWs.on('message', (message) => {
+                try {
+                    const data = JSON.parse(message.toString());
+                    console.log(`OpenAI message received:`, data.type);
+                    
+                    // Handle transcription events
+                    if (data.type === 'conversation.item.input_audio_transcription.completed') {
+                        console.log(`Transcription result for ${ws.userEmail}:`, data.transcript);
+                        ws.send(JSON.stringify({ 
+                            type: 'transcript', 
+                            text: data.transcript 
+                        }));
+                    }
+                    
+                    // Forward other relevant messages to client
+                    if (data.type === 'response.text.delta' || 
+                        data.type === 'response.audio.delta' ||
+                        data.type === 'error') {
+                        ws.send(JSON.stringify(data));
+                    }
+                } catch (error) {
+                    console.error('Error parsing OpenAI message:', error);
+                }
+            });
+
+            openaiWs.on('error', (error) => {
+                console.error(`OpenAI WebSocket error for ${user.email}:`, error);
+                ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection error' }));
+                
+                // Fall back to standard transcription on error
+                console.log(`Falling back to standard transcription for ${user.email}`);
+                ws.send(JSON.stringify({ 
+                    type: 'status', 
+                    message: 'Connection successful. Using standard transcription. Ready for audio.'
+                }));
+            });
+
+            openaiWs.on('close', () => {
+                console.log(`OpenAI WebSocket closed for ${user.email}`);
+                openaiConnections.delete(ws.userId);
+            });
+
+        } catch (sessionError) {
+            console.error('Error creating OpenAI Realtime session:', sessionError);
+            ws.send(JSON.stringify({ 
+                type: 'error', 
+                message: 'Failed to create OpenAI Realtime session. Using standard transcription.'
+            }));
+            
+            // Notify client that we're using the fallback approach
             ws.send(JSON.stringify({ 
                 type: 'status', 
                 message: 'Connection successful. Using standard transcription. Ready for audio.'
@@ -230,19 +252,14 @@ wss.on('connection', async (ws, req) => {
         // Handle incoming audio from client
         ws.on('message', async (message) => {
             if (message instanceof Buffer || message instanceof ArrayBuffer || typeof message === 'object') {
-                if (hasRealtimeAPI) {
-                    const openaiWs = openaiConnections.get(ws.userId);
-                    if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-                        // Send audio to OpenAI
-                        const audioAppendEvent = {
-                            type: "input_audio_buffer.append",
-                            audio: Buffer.from(message).toString('base64')
-                        };
-                        openaiWs.send(JSON.stringify(audioAppendEvent));
-                    } else {
-                        console.error(`OpenAI WebSocket not available for ${ws.userEmail}`);
-                        ws.send(JSON.stringify({ type: 'error', message: 'OpenAI connection not available' }));
-                    }
+                const openaiWs = openaiConnections.get(ws.userId);
+                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                    // Send audio to OpenAI Realtime API
+                    const audioAppendEvent = {
+                        type: "input_audio_buffer.append",
+                        audio: Buffer.from(message).toString('base64')
+                    };
+                    openaiWs.send(JSON.stringify(audioAppendEvent));
                 } else {
                     // Fallback approach: collect audio chunks
                     console.log(`Received audio chunk from ${ws.userEmail}: ${message.length} bytes`);
