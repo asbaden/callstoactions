@@ -111,10 +111,11 @@ wss.on('connection', async (ws, req) => {
                         // Construct the parameter for the 'file' field
                         const fileParam = {
                            content: completeBuffer,
-                           name: filename
+                           name: filename,
+                           type: 'audio/webm' // Explicitly add the mime type
                         };
                         // Log exactly what we are sending
-                        console.log(`Attempting transcription with fileParam: { name: ${fileParam.name}, content_length: ${fileParam.content?.length} }`);
+                        console.log(`Attempting transcription with fileParam: { name: ${fileParam.name}, type: ${fileParam.type}, content_length: ${fileParam.content?.length} }`);
 
                         const transcription = await openai.audio.transcriptions.create({
                             file: fileParam, 
