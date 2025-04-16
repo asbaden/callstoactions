@@ -163,7 +163,106 @@ let audioChunks = [];
 // const WS_URL = 'ws://localhost:3001'; // Example, actual value comes from config.js
 
 async function startCall(callType) {
-    // ... (startCall function code remains here) ...
+    if (!currentUser) {
+        alert('Please log in first.');
+        return;
+    }
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        alert('A call is already in progress.');
+        return;
+    }
+
+    console.log(`Starting ${callType} call...`);
+    callStatus.textContent = `Connecting for ${callType} call...`;
+
+    // 1. Get Supabase Auth Token (JWT)
+    const { data: { session }, error: sessionError } = await _supabase.auth.getSession();
+    if (sessionError || !session) {
+        console.error('Error getting session or no active session:', sessionError);
+        alert('Could not get authentication token. Please log in again.');
+        callStatus.textContent = 'Auth error.';
+        return;
+    }
+    const accessToken = session.access_token;
+    console.log('Got Supabase Access Token.');
+
+    // 2. Request Microphone Access
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Microphone access granted.');
+    } catch (err) {
+        console.error('Error getting microphone access:', err);
+        alert('Microphone access denied. Please allow microphone access in your browser settings.');
+        callStatus.textContent = 'Mic access denied.';
+        return;
+    }
+
+    // 3. Establish WebSocket Connection (Send token for auth)
+    // Make sure WS_URL is defined (should be from config.js)
+    if (typeof WS_URL === 'undefined') {
+        console.error('WS_URL is not defined. Make sure config.js is loaded and defines it.');
+        alert('Configuration error: WebSocket URL not set.');
+        callStatus.textContent = 'Config error.';
+        return;
+    }
+    websocket = new WebSocket(`${WS_URL}?token=${accessToken}`);
+
+    // 4. WebSocket Event Handlers
+    websocket.onopen = () => {
+        console.log('WebSocket connection established.');
+        callStatus.textContent = `${callType} call connected. Speak now...`;
+        // Start recording and sending audio (TODO)
+        // setupMediaRecorder(stream);
+        // mediaRecorder.start(1000); // Send chunks every 1 second (adjust as needed)
+    };
+
+    websocket.onmessage = (event) => {
+        // Handle messages from the server (e.g., AI audio responses)
+        console.log('Message received from server:', event.data);
+        // TODO: Process received audio data and play it back
+        if (event.data instanceof Blob) {
+            // Assuming server sends audio blobs
+            // playAudio(event.data);
+        } else {
+            // Handle text messages if any (e.g., status updates, welcome message)
+            try {
+                 const parsedMessage = JSON.parse(event.data);
+                 if(parsedMessage.type === 'status') {
+                    callStatus.textContent = parsedMessage.message;
+                 } else {
+                    callStatus.textContent = `AI: ${event.data}`; // Fallback for non-JSON or unknown type
+                 }
+            } catch(e) {
+                 callStatus.textContent = `AI: ${event.data}`; // Display as raw text if not JSON
+            }
+        }
+    };
+
+    websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        callStatus.textContent = 'Connection error.';
+        // Clean up resources
+        // stopCall(); 
+    };
+
+    websocket.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code, event.reason);
+        callStatus.textContent = 'Call disconnected.';
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+        // Clean up stream tracks
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        websocket = null;
+        mediaRecorder = null;
+        audioChunks = [];
+    };
+
+    // TODO: Add MediaRecorder setup
+    // TODO: Add Audio Playback setup
 }
 
 // Placeholder functions for MediaRecorder/Audio (keep them defined here)
