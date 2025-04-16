@@ -247,21 +247,13 @@ async function startCall(callType) {
 
     // 4. Establish WebSocket Connection to OpenAI Realtime API
     const openaiWsUrl = 'wss://api.openai.com/v1/realtime'; // Base URL
-    console.log(`Connecting to OpenAI WebSocket: ${openaiWsUrl}`);
+    const connectionUrl = `${openaiWsUrl}?token=${ephemeralToken}`; // <-- Try adding token as query param
+    console.log(`Connecting to OpenAI WebSocket: ${connectionUrl}`);
     callStatus.textContent = 'Connecting to OpenAI...';
 
     // Use the ephemeral token for Authorization
-    window.openaiWebsocket = new WebSocket(openaiWsUrl, [
-        // Subprotocols might be needed, check docs. Often token goes in header.
-        // Standard WebSocket constructor doesn't support custom headers directly.
-        // We might need an initial auth message or parameter in URL if headers fail.
-        // For now, let's rely on implicit auth or see if connection fails.
-        // ALTERNATIVE (if direct connection fails): Connect via backend proxy.
-        // Let's try passing token in header via a library or initial message approach later if needed.
-        // A common pattern is token as second arg if supported by server: `new WebSocket(url, token)` 
-        // Let's try token as subprotocol first:
-         `Authorization,Bearer ${ephemeralToken}` // This is non-standard but sometimes works
-    ]);
+    // Remove the invalid subprotocol attempt
+    window.openaiWebsocket = new WebSocket(connectionUrl);
     
     // If the above fails, maybe the token goes in the URL? (Less secure)
     // window.openaiWebsocket = new WebSocket(`${openaiWsUrl}?token=${ephemeralToken}`);
