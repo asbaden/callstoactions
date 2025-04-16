@@ -7,6 +7,9 @@ const { createClient } = require('@supabase/supabase-js'); // Supabase JS librar
 const url = require('url'); // For URL parsing
 const OpenAI = require('openai'); // OpenAI library
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 // --- Initialize Supabase Admin Client (using Service Role Key) ---
 // Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are in your .env file or Render env vars
@@ -274,13 +277,25 @@ wss.on('connection', async (ws, req) => {
                         ws.audioBuffer = []; // Clear buffer after sending
 
                         try {
-                            console.log(`Attempting direct buffer transcription for ${ws.userEmail} (${completeBuffer.length} bytes)`);
+                            console.log(`Attempting transcription for ${ws.userEmail} (${completeBuffer.length} bytes)`);
                             
+                            // Create a temporary file
+                            const tempDir = os.tmpdir();
+                            const tempFile = path.join(tempDir, `audio_${ws.userId}_${Date.now()}.webm`);
+                            
+                            // Write buffer to file
+                            fs.writeFileSync(tempFile, completeBuffer);
+                            console.log(`Written audio to temporary file: ${tempFile}`);
+                            
+                            // Use file for transcription
                             const transcription = await openai.audio.transcriptions.create({
-                                file: completeBuffer,
-                                model: 'whisper-1',
-                                file_name: `audio_${ws.userId}_${Date.now()}.webm` // Just for identification
+                                file: fs.createReadStream(tempFile),
+                                model: 'whisper-1'
                             });
+                            
+                            // Clean up temp file
+                            fs.unlinkSync(tempFile);
+                            console.log(`Deleted temporary file: ${tempFile}`);
 
                             const transcriptText = transcription.text;
                             console.log(`Transcription result for ${ws.userEmail}:`, transcriptText);
