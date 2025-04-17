@@ -156,65 +156,60 @@ async function loadJournalEntries() {
 }
 
 // --- Call Functionality ---
-let websocket = null;
-let mediaRecorder = null;
-let audioContext = null;
-let audioQueue = []; // Queue for incoming audio chunks (ArrayBuffers)
-let isPlaying = false;
+// Remove WebSocket related variables
+// let websocket = null;
+let mediaRecorder = null; // May be removed if WebRTC handles audio track directly
+let audioContext = null; // Still potentially needed for playback or resampling
+let audioQueue = []; // Likely removed, WebRTC uses tracks
+let isPlaying = false; // Likely removed
 let stopCallBtn = null; // Reference to stop call button
 let userStream = null; // Store the user's media stream
-let openaiSessionId = null; // Store the OpenAI session ID
-let outputAudioFormat = 'pcm16'; // Default or fetched from session response
+let openaiSessionId = null; // Store the OpenAI session ID (Still potentially useful for context)
+// let outputAudioFormat = 'pcm16'; // Format handled by WebRTC negotiation
+// let isSessionReady = false; // State managed by WebRTC connection state
+
+// WebRTC specific variables
+let peerConnection = null;
+let dataChannel = null;
+let remoteAudioElement = null; // To play back audio from OpenAI
 
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
+// Base URL for WebRTC SDP exchange
+const OPENAI_WEBRTC_URL = 'https://api.openai.com/v1/realtime'; 
+// Specify the model (can be dynamic later)
+const OPENAI_REALTIME_MODEL = 'gpt-4o-realtime-preview'; 
+
 
 async function startCall(callType) {
     if (!currentUser) {
         alert('Please log in first.');
         return;
     }
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
+    // Check if a call is already in progress via peerConnection state
+    if (peerConnection && peerConnection.connectionState !== 'closed' && peerConnection.connectionState !== 'failed') {
+        console.log('WebRTC call already in progress. State:', peerConnection.connectionState);
         alert('A call is already in progress.');
         return;
     }
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-    }
-    if (userStream) {
-        userStream.getTracks().forEach(track => track.stop());
-    }
-    websocket = null;
-    mediaRecorder = null;
+    
+    // Clean up previous connection if necessary
+    await stopCall(); 
+
+    // Reset state variables
     userStream = null;
     openaiSessionId = null;
-
-    audioQueue = [];
-    isPlaying = false;
-
+    peerConnection = null;
+    dataChannel = null;
+    
     if (stopCallBtn) {
         stopCallBtn.style.display = 'inline-block';
     }
 
-    if (!audioContext) {
-        try {
-             audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 24000 // Match OpenAI's expected output rate for PCM
-             });
-             console.log('AudioContext created with 24kHz sample rate.');
-        } catch (e) {
-             console.error("Failed to create AudioContext, trying without specific sample rate:", e);
-             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-       
-    } else if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-    }
-
-    console.log(`Starting ${callType} call (OpenAI Realtime API)...`);
+    console.log(`Starting ${callType} call (WebRTC)...`);
     callStatus.textContent = `Initializing ${callType} call...`;
 
-    // 1. Get Supabase Auth Token (JWT) - Still needed for backend authentication
+    // 1. Get Supabase Auth Token (JWT)
     const { data: { session }, error: sessionError } = await _supabase.auth.getSession();
     if (sessionError || !session) {
         console.error('Error getting session or no active session:', sessionError);
@@ -226,19 +221,20 @@ async function startCall(callType) {
     const accessToken = session.access_token;
     console.log('Got Supabase Access Token.');
 
-    // 2. Fetch OpenAI Session Token from *our* backend
+    // 2. Fetch OpenAI Session Token (Ephemeral Key)
     let sessionData;
+    let ephemeralKey;
     try {
-        console.log(`Fetching OpenAI session token from ${OPENAI_SESSION_ENDPOINT}...`);
+        const sessionEndpointUrl = `${BACKEND_API_URL}/api/openai-session`;
+        console.log(`Fetching OpenAI session token from ${sessionEndpointUrl}...`);
         callStatus.textContent = 'Requesting session token...';
-        const response = await fetch(OPENAI_SESSION_ENDPOINT, {
+        const response = await fetch(sessionEndpointUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             },
-            // Send call type or other relevant info if needed by backend
-            body: JSON.stringify({ call_type: callType }) 
+            body: JSON.stringify({ call_type: callType })
         });
 
         if (!response.ok) {
@@ -246,255 +242,282 @@ async function startCall(callType) {
             throw new Error(`Failed to get OpenAI session token: ${response.status} ${errorText}`);
         }
         sessionData = await response.json();
-        
-        if (!sessionData.client_secret || !sessionData.id) {
-             throw new Error('Invalid session data received from backend.');
+
+        if (!sessionData.client_secret || !sessionData.client_secret.value || !sessionData.id) {
+            throw new Error('Invalid session data received from backend.');
         }
-        
+
         openaiSessionId = sessionData.id;
-        outputAudioFormat = sessionData.output_audio_format || 'pcm16'; // Store actual format
+        ephemeralKey = sessionData.client_secret.value;
         console.log('Received OpenAI Session ID:', openaiSessionId);
-        console.log('Using output audio format:', outputAudioFormat);
+        console.log('Received Ephemeral Key (Client Secret)');
 
     } catch (error) {
         console.error('Error fetching OpenAI session token:', error);
         alert(`Failed to start call: ${error.message}`);
         callStatus.textContent = 'Session token error.';
-         if (stopCallBtn) stopCallBtn.style.display = 'none';
+        if (stopCallBtn) stopCallBtn.style.display = 'none';
         return;
     }
 
     // 3. Request Microphone Access
     try {
-        // Request 24kHz if possible, but browser might ignore it
         userStream = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-                sampleRate: 24000, // Ideal for OpenAI
-                channelCount: 1    // Mono
+                 // Try preferred settings, browser may adjust
+                sampleRate: 24000, 
+                channelCount: 1,
+                echoCancellation: true, // Recommended for voice comms
+                noiseSuppression: true // Recommended for voice comms
             } 
         });
         console.log('Microphone access granted.');
-         // Check actual sample rate
-         const audioTracks = userStream.getAudioTracks();
-         if (audioTracks.length > 0) {
-             const settings = audioTracks[0].getSettings();
-             console.log('Actual microphone settings:', settings);
-             if(settings.sampleRate !== 24000) {
-                 console.warn(`Microphone using sample rate ${settings.sampleRate}, not 24000. Resampling may be needed (Not implemented).`);
-                 // TODO: Implement resampling using Web Audio API if needed
-             }
-         }
+        // Log actual settings
+        const audioTracks = userStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+             console.log('Actual microphone settings:', audioTracks[0].getSettings());
+        }
     } catch (err) {
         console.error('Error getting microphone access:', err);
         alert('Microphone access denied.');
         callStatus.textContent = 'Mic access denied.';
-         if (stopCallBtn) stopCallBtn.style.display = 'none';
+        if (stopCallBtn) stopCallBtn.style.display = 'none';
         return;
     }
 
-    // 4. Establish WebSocket Connection to OpenAI
-    connectOpenAIWebSocket(sessionData.id, sessionData.client_secret.value, callType);
+    // 4. Initiate WebRTC Connection
+    try {
+        await connectOpenAIWebRTC(ephemeralKey, callType);
+    } catch (error) {
+         console.error('Error initiating WebRTC connection:', error);
+         alert(`Failed to connect via WebRTC: ${error.message}`);
+         callStatus.textContent = 'WebRTC Connection Error.';
+         await stopCall(); // Ensure cleanup on failure
+    }
 }
 
-// --- Function to connect to OpenAI WebSocket ---
-function connectOpenAIWebSocket(sessionId, clientSecret, callType) {
-    const openaiWsUrl = `wss://api.openai.com/v1/realtime/sessions/${sessionId}/connect?client_secret=${clientSecret}`;
-    console.log(`Connecting to OpenAI WebSocket: ${openaiWsUrl}`);
-    callStatus.textContent = 'Connecting to OpenAI...';
-    
-    websocket = new WebSocket(openaiWsUrl);
+// --- NEW Function to connect to OpenAI via WebRTC ---
+async function connectOpenAIWebRTC(ephemeralKey, callType) {
+    console.log("Initiating WebRTC connection...");
+    callStatus.textContent = 'Setting up WebRTC...';
 
-    websocket.onopen = () => {
-        console.log('OpenAI WebSocket connection established.');
-        callStatus.textContent = `${callType} call connected. Speak now...`;
-        
-        // Configure and start MediaRecorder *after* WebSocket is open
-        setupMediaRecorder(userStream); 
-        if (mediaRecorder) {
-             // Start sending audio chunks frequently
-             mediaRecorder.start(250); // Send data every 250ms 
-             console.log('MediaRecorder started, sending data.');
+    // Create PeerConnection
+    peerConnection = new RTCPeerConnection();
+
+    // --- Event Handlers for PeerConnection ---
+    peerConnection.onicecandidate = (event) => {
+        // ICE candidates are typically handled automatically in modern browsers
+        // for Offer/Answer, but log them for debugging.
+        if (event.candidate) {
+            // console.debug('ICE Candidate generated:', event.candidate);
         } else {
-             console.error("MediaRecorder setup failed, cannot send audio.");
-             callStatus.textContent = 'Error: Cannot record audio.';
-             stopCall(); // Abort the call
+            // console.debug('All ICE candidates have been sent');
         }
     };
 
-    websocket.onmessage = (event) => {
+    peerConnection.onconnectionstatechange = (event) => {
+        console.log('WebRTC Connection State Changed:', peerConnection.connectionState);
+        switch (peerConnection.connectionState) {
+            case "connected":
+                callStatus.textContent = "WebRTC Connected.";
+                break;
+            case "disconnected":
+            case "failed":
+                callStatus.textContent = "WebRTC Disconnected.";
+                stopCall(); // Clean up on failure/disconnect
+                break;
+            case "closed":
+                callStatus.textContent = "WebRTC Call Ended.";
+                // Cleanup is likely already done by stopCall
+                break;
+        }
+    };
+
+    peerConnection.onicegatheringstatechange = (event) => {
+        console.log('ICE Gathering State Changed:', peerConnection.iceGatheringState);
+    };
+
+    peerConnection.onsignalingstatechange = (event) => {
+        console.log('Signaling State Changed:', peerConnection.signalingState);
+    };
+
+    peerConnection.onerror = (event) => {
+         // This often doesn't provide much detail, connectionstatechange is usually more informative
+         console.error('WebRTC PeerConnection Error Event:', event);
+    };
+
+    // Handle incoming audio track from OpenAI
+    peerConnection.ontrack = (event) => {
+        console.log('Remote track received:', event.track, event.streams);
+        if (event.streams && event.streams[0]) {
+            if (!remoteAudioElement) {
+                // Create an audio element if it doesn't exist
+                remoteAudioElement = document.createElement('audio');
+                remoteAudioElement.autoplay = true;
+                // Optional: Append to body for debugging controls
+                // document.body.appendChild(remoteAudioElement);
+                console.log('Created <audio> element for remote stream.');
+            }
+            remoteAudioElement.srcObject = event.streams[0];
+            console.log('Attached remote stream to audio element.');
+        } else {
+             console.warn("Received track event without stream data.");
+        }
+    };
+
+    // Add local microphone track to send audio to OpenAI
+    if (userStream) {
+        userStream.getTracks().forEach(track => {
+             console.log("Adding local audio track to PeerConnection.");
+             peerConnection.addTrack(track, userStream);
+        });
+    } else {
+         throw new Error("User media stream not available to add track.");
+    }
+
+    // Set up the data channel for JSON messages
+    console.log("Creating data channel 'oai-events'...");
+    dataChannel = peerConnection.createDataChannel("oai-events");
+    dataChannel.binaryType = 'arraybuffer'; // Set appropriate binary type if needed
+
+    dataChannel.onopen = () => {
+        console.log("Data Channel 'oai-events' opened.");
+        callStatus.textContent = `${callType} call ready. Speak now...`;
+         // We can potentially send configuration messages here if needed by OpenAI via DataChannel
+         // Example: sendDataChannelMessage({ type: 'session.config', ... });
+    };
+
+    dataChannel.onclose = () => {
+        console.log("Data Channel 'oai-events' closed.");
+        // Connection state change usually handles main cleanup
+    };
+
+    dataChannel.onerror = (error) => {
+        console.error("Data Channel Error:", error);
+    };
+
+    dataChannel.onmessage = (event) => {
+        // console.debug("Data Channel message received:", event.data);
         try {
             const message = JSON.parse(event.data);
-            // console.debug('Message received from OpenAI:', message); // Use debug level
+            // console.debug('Parsed message from Data Channel:', message);
 
+            // Process messages similarly to WebSocket approach
             switch (message.type) {
-                case 'session.created':
-                    console.log('OpenAI session created:', message);
-                    // Can verify settings here if needed
-                    break;
-                case 'response.text.delta':
-                    // Append text delta to UI element (create one if needed)
-                    callStatus.textContent = `Assistant: ${message.delta}`; // Simple update for now
-                    console.log('Text delta:', message.delta); 
-                    break;
-                 case 'response.audio.delta':
-                    // Decode Base64 audio chunk and queue for playback
-                    const audioChunk = base64ToArrayBuffer(message.delta);
-                    // console.debug("Queueing audio chunk, size:", audioChunk.byteLength);
-                    audioQueue.push(audioChunk);
-                    if (!isPlaying) {
-                        playNextChunk();
-                    }
-                    break;
-                case 'transcription.text.delta':
-                     // Update UI with user transcription (optional)
-                     console.log('User transcription delta:', message.delta);
-                     // Example: document.getElementById('user-transcript').textContent += message.delta;
+                 case 'session.created': // Might not be sent over data channel, connection state implies readiness
+                     console.log('OpenAI session confirmed via Data Channel (or inferred):', message);
                      break;
-                case 'session.warning':
+                 case 'response.text.delta':
+                     callStatus.textContent = `Assistant: ${message.delta}`; // Simple update
+                     console.log('Text delta:', message.delta); 
+                     break;
+                 // Audio is handled by ontrack, not data channel messages
+                 // case 'response.audio.delta': break; 
+                 case 'transcription.text.delta':
+                     console.log('User transcription delta:', message.delta);
+                     break;
+                 case 'session.warning':
                      console.warn('OpenAI session warning:', message.message);
                      break;
-                case 'session.error':
-                    console.error('OpenAI session error:', message.code, message.message);
-                    callStatus.textContent = `OpenAI Error: ${message.message}`;
-                    stopCall(); // End call on critical error
-                    break;
-                case 'session.terminated':
+                 case 'session.error':
+                     console.error('OpenAI session error:', message.code, message.message);
+                     callStatus.textContent = `OpenAI Error: ${message.message}`;
+                     stopCall();
+                     break;
+                 case 'session.terminated':
                      console.log('OpenAI session terminated:', message);
                      callStatus.textContent = 'Call ended by server.';
-                     stopCall(); // Clean up client-side too
+                     stopCall();
                      break;
-                default:
-                    console.log('Unhandled message type from OpenAI:', message.type, message);
+                 default:
+                     console.log('Unhandled message type from Data Channel:', message.type, message);
             }
         } catch (e) {
-            console.error('Failed to parse incoming OpenAI message or handle event:', event.data, e);
+            console.error('Failed to parse incoming Data Channel message or handle event:', event.data, e);
         }
     };
 
-    websocket.onerror = (error) => {
-        console.error('OpenAI WebSocket error:', error);
-        callStatus.textContent = 'Connection error.';
-        stopCall();
+    // Start the SDP Offer/Answer exchange
+    console.log("Creating SDP Offer...");
+    callStatus.textContent = 'Negotiating connection...';
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    console.log("Local description (Offer) set.");
+
+    // Send Offer to OpenAI Realtime endpoint
+    const sdpEndpoint = `${OPENAI_WEBRTC_URL}?model=${OPENAI_REALTIME_MODEL}`;
+    console.log(`Sending SDP Offer to ${sdpEndpoint}...`);
+    const sdpResponse = await fetch(sdpEndpoint, {
+        method: "POST",
+        body: offer.sdp, // Send the SDP string
+        headers: {
+            "Authorization": `Bearer ${ephemeralKey}`,
+            "Content-Type": "application/sdp" 
+        },
+    });
+
+    if (!sdpResponse.ok) {
+        const errorText = await sdpResponse.text();
+        console.error(`SDP Exchange failed: ${sdpResponse.status}`, errorText);
+         try {
+            // Check if OpenAI returned JSON error despite Content-Type
+             const errorJson = JSON.parse(errorText);
+             if (errorJson.error) {
+                 throw new Error(`SDP Exchange Failed: ${errorJson.error.message} (Code: ${errorJson.error.code})`);
+             }
+         } catch(e) { /* Ignore if not JSON */ }
+         // Throw generic error if JSON parse failed or didn't contain OpenAI error structure
+        throw new Error(`SDP Exchange request failed with status ${sdpResponse.status}`);
+    }
+
+    const answerSdp = await sdpResponse.text();
+    console.log("Received SDP Answer.");
+    const answer = {
+        type: "answer",
+        sdp: answerSdp,
     };
-
-    websocket.onclose = (event) => {
-        console.log('OpenAI WebSocket connection closed:', event.code, event.reason);
-        // Avoid setting status if stopCall already did
-        if (callStatus.textContent !== 'Call ended.') {
-             callStatus.textContent = 'Call disconnected.';
-        }
-        // Ensure cleanup happens even if close wasn't initiated by stopCall()
-        stopCallCleanup(); 
-    };
+    await peerConnection.setRemoteDescription(answer);
+    console.log("Remote description (Answer) set. WebRTC setup complete.");
+    // Connection state change handler will update status further
 }
 
-// Helper function to convert Base64 string to ArrayBuffer
-function base64ToArrayBuffer(base64) {
-    try {
-        const binaryString = atob(base64);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-    } catch (e) {
-        console.error("Error decoding base64 string:", e, "String:", base64.substring(0, 50) + "...");
-        return new ArrayBuffer(0); // Return empty buffer on error
-    }
-}
+// --- Remove old WebSocket functions ---
+// function connectOpenAIWebSocket(...) { ... }
+// function base64ToArrayBuffer(...) { ... }
+// function playAudio(...) { ... }
+// function playNextChunk() { ... }
 
-// --- Audio playback function for Realtime API (handles PCM) ---
-function playAudio(base64Audio) {
-    // This function is now less direct, playback happens via playNextChunk
-    const audioChunk = base64ToArrayBuffer(base64Audio);
-    audioQueue.push(audioChunk);
-    if (!isPlaying) {
-        playNextChunk();
-    }
-}
-
-function playNextChunk() {
-    if (audioQueue.length === 0) {
-        isPlaying = false;
-        return;
-    }
-
-    isPlaying = true;
-    const pcmData = audioQueue.shift(); // Get ArrayBuffer (raw PCM data)
-
-    if (pcmData.byteLength === 0) {
-        console.warn("Skipping empty audio chunk");
-        playNextChunk();
-        return;
-    }
-
-    // Assume PCM16 data (2 bytes per sample)
-    const samples = pcmData.byteLength / 2; 
-    // Create an AudioBuffer: 1 channel (mono), correct number of samples, 24kHz rate
-    try {
-        const audioBuffer = audioContext.createBuffer(1, samples, audioContext.sampleRate); 
-        
-        // Get the channel data buffer (Float32)
-        const outputBuffer = audioBuffer.getChannelData(0);
-        
-        // Manually convert PCM16 (Int16) to Float32 range [-1.0, 1.0]
-        const pcm16View = new Int16Array(pcmData);
-        for (let i = 0; i < samples; i++) {
-            outputBuffer[i] = pcm16View[i] / 32768.0; // Convert Int16 to Float32
-        }
-
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.onended = playNextChunk; // Play next chunk when this one finishes
-        source.start();
-        // console.debug(`Playing audio chunk: ${samples} samples`);
-
-    } catch (err) {
-         console.error('Error creating or playing audio buffer:', err, `Chunk Size: ${pcmData.byteLength}, Samples: ${samples}, Sample Rate: ${audioContext.sampleRate}`);
-         playNextChunk(); // Skip failed chunk
-    }
-}
-
-
-// --- Stop call function ---
-function stopCall() {
+// --- Update Stop Call function for WebRTC ---
+async function stopCall() { // Make async if needed for future cleanup steps
     console.log("stopCall() initiated");
-    // Send termination message if connected
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        console.log("Closing WebSocket connection.");
-        // OpenAI doesn't have a specific client "close" message, just close the socket.
-        websocket.close(1000, "Client stopping call"); 
-    } else {
-         console.log("WebSocket not open or already closed.");
-    }
-    // Perform cleanup immediately
-    stopCallCleanup();
-}
 
-// Separate cleanup logic to be called by stopCall or onclose
-function stopCallCleanup() {
-     console.log("Running stopCallCleanup...");
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        console.log("Stopping MediaRecorder.");
-        mediaRecorder.stop();
+    if (peerConnection) {
+        console.log("Closing RTCPeerConnection.");
+        peerConnection.close();
+        peerConnection = null;
     }
-     if (userStream) {
+    if (dataChannel) {
+        // Closing peerConnection usually closes dataChannel, but explicit check is ok
+        dataChannel = null; 
+    }
+    
+    if (userStream) {
         console.log("Stopping media stream tracks.");
         userStream.getTracks().forEach(track => track.stop());
+        userStream = null;
     }
     
-    // Clear audio playback queue and state
-    audioQueue = [];
-    isPlaying = false;
-    
-     // Maybe stop the audio context source if one is active? Often handled by onended.
+    if (remoteAudioElement && remoteAudioElement.parentNode) {
+        // Clean up dynamically added audio element if needed
+        // remoteAudioElement.parentNode.removeChild(remoteAudioElement);
+        // remoteAudioElement = null;
+    } else if (remoteAudioElement) {
+        // Pause and reset srcObject if element wasn't added to DOM or is reused
+         remoteAudioElement.pause();
+         remoteAudioElement.srcObject = null;
+    }
 
-    // Reset variables
-    websocket = null;
-    mediaRecorder = null;
-    userStream = null;
+    // Reset variables (some already nulled above)
     openaiSessionId = null;
 
     // Hide stop call button
@@ -502,106 +525,20 @@ function stopCallCleanup() {
         stopCallBtn.style.display = 'none';
     }
     
-    // Set status only if not already set by server termination/error
-    if (callStatus.textContent !== 'Call ended by server.' && !callStatus.textContent.startsWith('OpenAI Error:')) {
+    // Set status only if not already set by connection state change
+    if (callStatus.textContent !== 'WebRTC Call Ended.' && callStatus.textContent !== 'WebRTC Disconnected.') {
          callStatus.textContent = 'Call ended.';
     }
-     console.log("stopCallCleanup finished.");
+     console.log("stopCall cleanup finished.");
 }
 
+// Separate cleanup logic to be called by stopCall or onclose (REMOVED as stopCall handles it now)
+// function stopCallCleanup() { ... }
 
-// --- Updated MediaRecorder setup --- 
-function setupMediaRecorder(stream) {
-    let options = {};
-    const preferredType = 'audio/pcm'; // OpenAI wants PCM16
-    const fallbackType = 'audio/webm;codecs=opus'; // Common fallback
 
-    // OpenAI Realtime expects PCM 16-bit, 24kHz, mono, little-endian.
-    // MediaRecorder might not directly support this reliably across browsers.
-    // 'audio/pcm' or 'audio/wav' *might* work but are often unstandardized.
-    // Using WebM/Opus might require server-side transcoding OR using a different API if direct PCM isn't feasible client-side.
-    // We'll TRY PCM/WAV first, but Web Audio API is the robust solution for raw PCM capture.
-
-    if (MediaRecorder.isTypeSupported(preferredType)) {
-        options = { mimeType: preferredType };
-         console.log(`Attempting to use preferred mimeType: ${preferredType}`);
-    } else if (MediaRecorder.isTypeSupported('audio/wav')) {
-         options = { mimeType: 'audio/wav' }; // WAV might contain PCM
-         console.log(`Attempting to use fallback mimeType: audio/wav`);
-    } else if (MediaRecorder.isTypeSupported(fallbackType)) {
-        options = { mimeType: fallbackType };
-        console.warn(`Using fallback mimeType: ${fallbackType}. This will likely NOT work with OpenAI Realtime API without transcoding.`);
-    } else {
-         console.error("No supported mimeType found for MediaRecorder (tried pcm, wav, webm/opus). Cannot record audio.");
-         mediaRecorder = null; // Explicitly nullify
-         return; // Exit if no suitable format found
-    }
-
-    // Add audioBitsPerSecond if attempting Opus, though it might not guarantee PCM quality needed.
-    // if (options.mimeType?.includes('opus')) {
-    //     options.audioBitsPerSecond = 128000; // Example bitrate
-    // }
-
-    try {
-        mediaRecorder = new MediaRecorder(stream, options);
-        console.log('MediaRecorder created with options:', options);
-        console.log('Actual mimeType being used:', mediaRecorder.mimeType);
-    } catch (e) {
-        console.error('Failed to create MediaRecorder with options:', options, e);
-         // Try with default options as a last resort
-         try {
-             console.log("Trying MediaRecorder with default options...");
-             mediaRecorder = new MediaRecorder(stream);
-             console.warn('Using default MediaRecorder mimeType:', mediaRecorder.mimeType, ". This may not work.");
-         } catch (e2) {
-             console.error('Failed to create MediaRecorder even with default options:', e2);
-             mediaRecorder = null; // Ensure it's null if creation fails
-             return;
-         }
-    }
-     
-     // If recorder was created, set up handlers
-     if(mediaRecorder) {
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
-                // Convert Blob to Base64 and send in OpenAI format
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    // Result contains 'data:audio/xxx;base64,....' - we need only the base64 part
-                    const base64Audio = reader.result.split(',')[1]; 
-                    if (base64Audio) {
-                        const message = {
-                            type: 'input.audio.chunk',
-                            chunk: base64Audio
-                        };
-                        // console.debug("Sending audio chunk, size:", event.data.size);
-                        websocket.send(JSON.stringify(message));
-                    } else {
-                         console.warn("Could not extract base64 data from FileReader result.");
-                    }
-                };
-                reader.onerror = (err) => {
-                     console.error("FileReader error converting blob to Base64:", err);
-                };
-                reader.readAsDataURL(event.data);
-            } 
-        };
-        
-        mediaRecorder.onstop = () => {
-            console.log('MediaRecorder stopped.');
-            // Optionally send an 'end of input audio' message if API supports it
-        };
-        
-        mediaRecorder.onerror = (event) => {
-            console.error('MediaRecorder error:', event.error);
-            callStatus.textContent = "Recording error.";
-            stopCall(); // Stop call on recorder error
-        };
-    }
-}
-
-// --- Remove old playback functions if they conflict ---
-// (Keep playAudio/playNextChunk as they are redefined above for PCM)
+// --- Remove MediaRecorder setup and related logic ---
+// function setupMediaRecorder(stream) { ... }
+// The mediaRecorder.ondataavailable logic is also removed implicitly
 
 // --- ATTACH CALL BUTTON LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
