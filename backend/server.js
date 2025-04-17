@@ -93,8 +93,20 @@ app.post('/api/openai-session', async (req, res) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "gpt-4o-realtime-preview", 
-                modalities: ["audio", "text"]
+                model: "gpt-4o",
+                modalities: ["audio", "text"],
+                voice: "echo",
+                instructions: instructions,
+                input_audio_format: "pcm16",
+                output_audio_format: "pcm16",
+                turn_detection: {
+                    type: "server_vad",
+                    threshold: 0.5,
+                    silence_duration_ms: 700
+                },
+                input_audio_transcription: {
+                    model: "whisper-1"
+                }
             })
         });
 
@@ -146,7 +158,7 @@ app.post('/api/create-realtime-session', async (req, res) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "gpt-4o-realtime-preview",
+                model: "gpt-4o",
                 modalities: ["audio", "text"],
                 voice: "echo",
                 input_audio_format: "pcm16",
