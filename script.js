@@ -160,13 +160,28 @@ async function loadJournalEntries() {
 
             // Add the hidden transcript section
             if (entry.full_transcript) {
-                // Use <pre> for preformatted text, including line breaks
-                 transcriptHTML = `
-                    <div class="journal-transcript" style="display: none; margin-top: 10px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc;">
-                        <strong>Full Transcript:</strong>
-                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${entry.full_transcript}</pre>
-                    </div>
-                `;
+                // --- Format Transcript like a script ---
+                let formattedTranscript = "";
+                const lines = entry.full_transcript.trim().split('\n');
+                lines.forEach(line => {
+                    if (line.startsWith("Me:")) {
+                        formattedTranscript += `<div style="text-align: center; font-weight: bold; margin-top: 0.5em;">Me</div>`;
+                        formattedTranscript += `<div style="margin-left: 1em;">${line.substring(3).trim()}</div>`; // Indent dialogue slightly
+                    } else if (line.startsWith("Actions:")) {
+                        formattedTranscript += `<div style="text-align: center; font-weight: bold; margin-top: 0.5em;">Actions</div>`;
+                        formattedTranscript += `<div style="margin-left: 1em;">${line.substring(8).trim()}</div>`;
+                    } else if (line.trim() !== "") { // Handle potential continuation lines (less likely with current logging)
+                        formattedTranscript += `<div style="margin-left: 1em;">${line.trim()}</div>`;
+                    }
+                });
+                // --- End Formatting ---
+
+                transcriptHTML = `
+                   <div class="journal-transcript script-format" style="display: none; margin-top: 10px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc;">
+                       <strong>Full Transcript:</strong><br>
+                       ${formattedTranscript}
+                   </div>
+               `;
             } else {
                  // Message if no transcript is saved
                  transcriptHTML = `

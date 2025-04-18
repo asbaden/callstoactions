@@ -1,0 +1,10 @@
+/* Add custom styles here */
+
+.script-format {
+    font-family: Courier, monospace;
+}
+
+/* Add some spacing between script turns */
+.script-format > div {
+    margin-bottom: 0.5em; 
+}
