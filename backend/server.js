@@ -210,6 +210,139 @@ app.post('/api/create-realtime-session', async (req, res) => {
     }
 });
 
+// --- NEW Endpoint to Generate Action Items from Transcript ---
+app.post('/api/generate-action-items', async (req, res) => {
+    console.log("Received request for /api/generate-action-items");
+    const token = req.headers.authorization?.split(' ')[1];
+    const { journal_entry_id } = req.body;
+
+    if (!token) {
+        console.log("Rejected: No token provided.");
+        return res.status(401).json({ error: 'Authentication required: No token provided.' });
+    }
+    if (!journal_entry_id) {
+        console.log("Rejected: Missing journal_entry_id in request body.");
+        return res.status(400).json({ error: 'Bad Request: Missing journal_entry_id.' });
+    }
+
+    try {
+        // 1. Verify Supabase JWT and get user ID
+        console.log("Verifying Supabase token...");
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) {
+            console.error('Authentication failed:', authError?.message || 'Invalid token or user not found.');
+            return res.status(401).json({ error: 'Authentication failed.', details: authError?.message });
+        }
+        console.log(`Authenticated user: ${user.email} for journal entry ${journal_entry_id}`);
+
+        // 2. Fetch the full_transcript from Supabase
+        console.log(`Fetching transcript for journal entry ID: ${journal_entry_id}`);
+        const { data: entryData, error: fetchError } = await supabaseAdmin
+            .from('journal_entries')
+            .select('full_transcript')
+            .eq('id', journal_entry_id)
+            .eq('user_id', user.id) // Ensure the entry belongs to the authenticated user
+            .single();
+
+        if (fetchError) {
+            console.error('Error fetching journal entry:', fetchError);
+            return res.status(500).json({ error: 'Failed to fetch journal entry.', details: fetchError.message });
+        }
+        if (!entryData || !entryData.full_transcript) {
+            console.warn(`No transcript found for journal entry ID: ${journal_entry_id}`);
+            return res.status(404).json({ error: 'Transcript not found for this entry.' });
+        }
+        const transcript = entryData.full_transcript;
+        console.log(`Transcript fetched successfully (length: ${transcript.length})`);
+
+        // 3. Call OpenAI API (GPT-4.1 nano) to extract action items
+        console.log("Calling OpenAI (gpt-4-1106-preview) to extract action items..."); // Using gpt-4-turbo-preview temporarily
+        const prompt = `Analyze the following conversation transcript between a user ("Me:") and an AI assistant ("Actions:"). Extract a list of specific, actionable tasks or commitments the user mentioned they would do. Focus only on concrete actions the user intends to take. Format the output as a JSON array of strings. If no specific actions are mentioned, return an empty array [].
+
+Transcript:
+---
+${transcript}
+---
+
+JSON Array of Actions:`;
+
+        try {
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4-turbo-preview", // Use gpt-4-1106-preview or similar if nano isn't available/working yet
+                messages: [
+                    { role: "system", content: "You are an assistant that extracts actionable tasks from transcripts and outputs them as a JSON array." },
+                    { role: "user", content: prompt }
+                ],
+                response_format: { type: "json_object" }, // Ensure JSON output
+                temperature: 0.2, // Lower temperature for more deterministic output
+            });
+
+            let actionItems = [];
+            const responseContent = completion.choices[0]?.message?.content;
+            if (responseContent) {
+                console.log("Raw OpenAI response content:", responseContent);
+                try {
+                    // The model is instructed to return a JSON object containing the array.
+                    // We need to parse the string and potentially access a key within it.
+                    const parsedJson = JSON.parse(responseContent);
+                    // ASSUMPTION: The model returns an object like { "actions": [...] } or directly the array.
+                    // Adjust this based on actual model output.
+                    if (Array.isArray(parsedJson)) {
+                        actionItems = parsedJson;
+                    } else if (parsedJson.actions && Array.isArray(parsedJson.actions)) {
+                        actionItems = parsedJson.actions;
+                    } else if (parsedJson.action_items && Array.isArray(parsedJson.action_items)) {
+                         actionItems = parsedJson.action_items;
+                    } else {
+                         console.warn("Parsed JSON from OpenAI does not contain an expected array key ('actions' or 'action_items'). Using empty array.");
+                         // Log the unexpected structure for debugging
+                         console.log("Unexpected JSON structure:", parsedJson);
+                    }
+                    // Filter out any non-string items just in case
+                    actionItems = actionItems.filter(item => typeof item === 'string');
+
+                    console.log("Extracted action items:", actionItems);
+                } catch (parseError) {
+                    console.error('Error parsing JSON response from OpenAI:', parseError);
+                    console.error('Raw response that failed parsing:', responseContent);
+                    // Don't save if parsing fails, keep action_items as []
+                }
+            } else {
+                console.warn('No content received from OpenAI completion.');
+            }
+
+            // 4. Update the journal entry in Supabase with the action items
+            console.log(`Updating journal entry ${journal_entry_id} with action items...`);
+            const { error: updateError } = await supabaseAdmin
+                .from('journal_entries')
+                .update({ action_items: actionItems })
+                .eq('id', journal_entry_id)
+                .eq('user_id', user.id);
+
+            if (updateError) {
+                console.error('Error updating journal entry with action items:', updateError);
+                // Still return success to the client, but log the update error
+                return res.status(200).json({ message: 'Action items generated but failed to save.', items: actionItems });
+            }
+
+            console.log(`Successfully updated journal entry ${journal_entry_id}`);
+            res.status(200).json({ message: 'Action items generated and saved successfully.', items: actionItems });
+
+        } catch (openaiError) {
+            console.error('Error calling OpenAI API:', openaiError);
+            res.status(500).json({ error: 'Failed to generate action items from OpenAI.', details: openaiError.message });
+        }
+
+    } catch (error) {
+        // Catch any unexpected errors (e.g., from auth or initial fetch)
+        console.error('Error processing /api/generate-action-items:', error);
+        res.status(500).json({ 
+            error: 'Internal server error processing action items request.',
+            details: error.message 
+        });
+    }
+});
+
 // --- WebSocket Server Logic ---
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server }); 

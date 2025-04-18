@@ -2,9 +2,59 @@
 
 .script-format {
     font-family: Courier, monospace;
+    text-align: center; /* Center all text within the transcript */
+}
+
+/* Style potential speaker labels to prevent extra line breaks */
+.script-format strong, 
+.script-format span { /* Assuming speaker labels might be strong or span */
+    display: inline-block; /* Keeps label on the same line as text */
+    margin-right: 0.5em; /* Add some space after the label */
 }
 
 /* Add some spacing between script turns */
 .script-format > div {
     margin-bottom: 0.5em; 
+}
+
+/* Journal Transcript - Chat Bubble Styling */
+.journal-transcript {
+    /* Container retains its style, but we add clearfix for floated bubbles */
+    padding: 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    margin-top: 10px;
+}
+
+.journal-transcript::after { /* Clearfix for floated children */
+    content: "";
+    display: table;
+    clear: both;
+}
+
+.chat-bubble {
+    padding: 10px 15px;
+    border-radius: 18px;
+    margin-bottom: 8px;
+    max-width: 75%; /* Bubbles don't span full width */
+    word-wrap: break-word; /* Handle long words */
+    position: relative;
+    clear: both; /* Prevent overlap */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    line-height: 1.4;
+}
+
+.me-bubble {
+    background-color: #dcf8c6; /* Light green */
+    float: right; /* Align to the right */
+    /* Optional: Tail effect */
+    /* border-bottom-right-radius: 5px; */
+}
+
+.actions-bubble {
+    background-color: #ffffff; /* White */
+    border: 1px solid #e9e9eb; /* Subtle border */
+    float: left; /* Align to the left */
+    /* Optional: Tail effect */
+    /* border-bottom-left-radius: 5px; */
 }

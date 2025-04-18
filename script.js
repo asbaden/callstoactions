@@ -122,7 +122,8 @@ async function loadJournalEntries() {
     try {
         const { data: entries, error } = await _supabase
             .from('journal_entries')
-            .select('*, full_transcript') // Select all columns INCLUDING the transcript
+            // Select all columns INCLUDING the transcript AND the new action_items
+            .select('*, full_transcript, action_items') 
             // .eq('user_id', currentUser.id) // RLS handles this, but explicit check is fine too
             .order('created_at', { ascending: false }); // Show newest first
 
@@ -141,7 +142,6 @@ async function loadJournalEntries() {
         journalEntriesDiv.innerHTML = '';
 
         // Display entries
-        let transcriptHTML = ''; // Declare once outside the loop
         entries.forEach(entry => {
             const entryElement = document.createElement('div');
             entryElement.classList.add('journal-entry');
@@ -150,54 +150,102 @@ async function loadJournalEntries() {
             // Format date nicely
             const date = new Date(entry.created_at).toLocaleString();
 
-            // Make the header clickable
+            // --- Build Header and Initial Content ---
             let headerHTML = `<strong class="journal-entry-header" style="cursor: pointer;">${date} - ${entry.call_type.toUpperCase()} (Click to view transcript)</strong><br>`;
-            if (entry.intention) headerHTML += `<em>Intention:</em> ${entry.intention}<br>`;
-            if (entry.action_plan) headerHTML += `<em>Action Plan:</em> ${entry.action_plan}<br>`;
-            // Add other non-transcript fields you might want visible initially
-            // if (entry.content) headerHTML += `<em>Reflection:</em> ${entry.content}<br>`;
-            // if (entry.gratitude) headerHTML += `<em>Gratitude:</em> ${entry.gratitude}<br>`;
+            
+            let visibleContentHTML = headerHTML; // Start with header
+            if (entry.intention) visibleContentHTML += `<em>Intention:</em> ${entry.intention}<br>`;
+            // Keep displaying the raw action plan text for context if it exists
+            if (entry.action_plan) visibleContentHTML += `<em>Action Plan (Raw):</em> ${entry.action_plan}<br>`; 
 
-            // Add the hidden transcript section
+            // --- Add Action Items Checklist ---
+            if (entry.action_items && Array.isArray(entry.action_items) && entry.action_items.length > 0) {
+                visibleContentHTML += '<strong>Action Items:</strong><ul class="action-items-list">';
+                entry.action_items.forEach((item, index) => {
+                    // Note: Checkbox state is not saved currently
+                    visibleContentHTML += `<li><input type="checkbox" id="item-${entry.id}-${index}"> <label for="item-${entry.id}-${index}">${item}</label></li>`;
+                });
+                visibleContentHTML += '</ul>';
+            }
+            // --- End Action Items Checklist ---
+
+
+            // --- Format Transcript (Chat Bubbles) ---
+            let transcriptHTML = ''; // Declare once
             if (entry.full_transcript) {
-                // --- Format Transcript like a script ---
+                // --- Format Transcript with Speaker Grouping ---
                 let formattedTranscript = "";
-                const lines = entry.full_transcript.trim().split('\n');
+                const lines = entry.full_transcript.split('\n');
+                let currentSpeaker = null;
+                let currentUtterance = "";
+            
+                function flushUtterance() {
+                    if (currentSpeaker && currentUtterance.trim() !== "") {
+                        // Determine bubble alignment and specific class
+                        const alignmentClass = currentSpeaker === "Me" ? 'me-bubble' : 'actions-bubble';
+                        
+                        // Get the trimmed utterance directly (space-separated)
+                        const utteranceHTML = currentUtterance.trim();
+
+                        // Create the bubble div
+                        formattedTranscript += `<div class="chat-bubble ${alignmentClass}">${utteranceHTML}</div>`; 
+                    }
+                    currentUtterance = ""; // Reset utterance
+                }
+            
                 lines.forEach(line => {
-                    if (line.startsWith("Me:")) {
-                        formattedTranscript += `<div style="text-align: center; font-weight: bold; margin-top: 0.5em;">Me</div>`;
-                        formattedTranscript += `<div style="margin-left: 1em;">${line.substring(3).trim()}</div>`; // Indent dialogue slightly
-                    } else if (line.startsWith("Actions:")) {
-                        formattedTranscript += `<div style="text-align: center; font-weight: bold; margin-top: 0.5em;">Actions</div>`;
-                        formattedTranscript += `<div style="margin-left: 1em;">${line.substring(8).trim()}</div>`;
-                    } else if (line.trim() !== "") { // Handle potential continuation lines (less likely with current logging)
-                        formattedTranscript += `<div style="margin-left: 1em;">${line.trim()}</div>`;
+                    const trimmedLine = line.trim();
+                    // Skip empty lines entirely
+                    if (trimmedLine === "") return; 
+            
+                    let speaker = null;
+                    let text = ""; // Initialize text
+            
+                    if (trimmedLine.startsWith("Me:")) {
+                        speaker = "Me";
+                        // Get text after prefix, keep internal whitespace
+                        text = line.substring(3).trimLeft(); 
+                    } else if (trimmedLine.startsWith("Actions:")) {
+                        speaker = "Actions";
+                         // Get text after prefix, keep internal whitespace
+                        text = line.substring(8).trimLeft();
+                    } else {
+                        // Line without prefix - assume continuation of the last speaker OR default if first line
+                        speaker = currentSpeaker || "Actions"; // Default to Actions if no speaker yet
+                        text = line; // Use the original line content (keeping leading/trailing space relative to this line)
+                    }
+            
+                    if (speaker && speaker !== currentSpeaker) {
+                        // Speaker changed, flush the previous utterance
+                        flushUtterance();
+                        currentSpeaker = speaker;
+                        currentUtterance = text.trim(); // Start new utterance, trim leading/trailing space
+                    } else {
+                         // Same speaker (or continuation assumed), append text with a SPACE
+                        currentUtterance += (currentUtterance ? " " + text.trim() : text.trim()); 
                     }
                 });
+            
+                // Flush the last utterance after the loop
+                flushUtterance();
                 // --- End Formatting ---
 
                 transcriptHTML = `
-                   <div class="journal-transcript script-format" style="display: none; margin-top: 10px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc;">
+                   <div class="journal-transcript" style="display: none;">
                        <strong>Full Transcript:</strong><br>
-                       ${formattedTranscript}
+                       ${formattedTranscript} 
                    </div>
                `;
             } else {
                  // Message if no transcript is saved
                  transcriptHTML = `
-                    <div class="journal-transcript" style="display: none; margin-top: 10px;">
+                    <div class="journal-transcript" style="display: none;">
                         <p><em>No full transcript saved for this entry.</em></p>
                     </div>
                 `;
             }
+             // --- End Transcript Formatting ---
 
-            // Set the combined HTML
-            let visibleContentHTML = headerHTML;
-            if (entry.intention) visibleContentHTML += `<em>Intention:</em> ${entry.intention}<br>`;
-            if (entry.action_plan) visibleContentHTML += `<em>Action Plan:</em> ${entry.action_plan}<br>`;
-            // Add other non-transcript fields you might want visible initially
-            // if (entry.content) visibleContentHTML += `<em>Reflection:</em> ${entry.content}<br>`;
-            // if (entry.gratitude) visibleContentHTML += `<em>Gratitude:</em> ${entry.gratitude}<br>`;
 
             // Set the combined HTML
             entryElement.innerHTML = visibleContentHTML + transcriptHTML + '<hr>'; // Add a separator
@@ -235,6 +283,8 @@ let currentCallType = null;
 let currentCallTranscript = "";
 let currentJournalEntryId = null;
 let lastSpeaker = null; // Track last speaker for formatting ('Me', 'Actions', null)
+let currentAssistantTurnDiv = null; // Keep track of the current div for AI delta updates
+let currentUserTurnDiv = null; // Keep track of the current div for user delta updates (if needed)
 
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
@@ -250,6 +300,7 @@ async function startCall(callType) {
     currentCallTranscript = "";
     currentJournalEntryId = null;
     lastSpeaker = null; // Reset on new call
+    callStatus.innerHTML = ''; // Clear previous transcript display on new call
     // --- End reset ---
 
     if (!currentUser) {
@@ -584,123 +635,158 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
             const message = JSON.parse(event.data);
             // console.debug('Parsed message from Data Channel:', message);
 
+            // Function to add a new turn div
+            function addTurnDiv(speaker, text) {
+                const turnDiv = document.createElement('div');
+                turnDiv.style.marginBottom = '0.5em'; // Add spacing like in CSS
+                
+                const speakerLabel = document.createElement('strong');
+                speakerLabel.textContent = speaker + ":";
+                speakerLabel.style.display = 'inline-block'; // Use inline-block as per style.css
+                speakerLabel.style.marginRight = '0.5em';
+                
+                const textSpan = document.createElement('span');
+                textSpan.textContent = text;
+                
+                turnDiv.appendChild(speakerLabel);
+                turnDiv.appendChild(textSpan);
+                callStatus.appendChild(turnDiv);
+                callStatus.scrollTop = callStatus.scrollHeight; // Auto-scroll
+                return turnDiv; // Return the created div
+            }
+
             // Process messages similarly to WebSocket approach
             switch (message.type) {
-                 case 'session.created': // Might not be sent over data channel, connection state implies readiness
+                 case 'session.created': 
                      console.log('OpenAI session confirmed via Data Channel (or inferred):', message);
-                     // Check if session data provides useful info
                      break;
-                 case 'response.text.delta':
-                     callStatus.textContent = `Assistant: ${message.delta}`; // Simple update
-                     console.log('Text delta:', message.delta); 
+                 
+                 // --- Handle AI speech delta ---
+                 case 'response.audio_transcript.delta':
+                      if (lastSpeaker !== 'Actions') { // Start of a new AI turn display
+                           // Ensure newline before starting AI turn if needed
+                           if (currentCallTranscript !== '' && !currentCallTranscript.endsWith('\n')) {
+                               currentCallTranscript += '\n';
+                           }
+                           // Add prefix to the saved transcript string
+                           currentCallTranscript += "Actions: " + message.delta + '\n'; 
+                           
+                           const turnDiv = addTurnDiv("Actions", message.delta);
+                           currentAssistantTurnDiv = turnDiv.querySelector('span'); 
+                           lastSpeaker = 'Actions'; 
+                           assistantTranscript = message.delta; 
+                      } else { // Continuation of AI turn
+                           assistantTranscript += message.delta;
+                           // Also append delta to saved transcript
+                           currentCallTranscript += message.delta;
+                           if (currentAssistantTurnDiv) {
+                                currentAssistantTurnDiv.textContent = assistantTranscript; // Update existing span
+                           }
+                      }
+                      break;
+
+                 // --- Handle User speech completion ---
+                 case 'conversation.item.input_audio_transcription.completed':
+                      console.log(`Received Data Channel Event: ${message.type}`, message);
+                      if (message.transcript) {
+                          const userText = message.transcript.trim();
+                          // Ensure newline before starting User turn if needed
+                           if (currentCallTranscript !== '' && !currentCallTranscript.endsWith('\n')) {
+                               currentCallTranscript += '\n';
+                           }
+                          // Append user transcript to log (WITH prefix and newline)
+                          currentCallTranscript += `Me: ${userText}\n`; 
+                          
+                          // Add user turn to display (without prefix here)
+                          addTurnDiv("Me", userText);
+                          lastSpeaker = 'Me';
+
+                          // Clear AI accumulator for next turn
+                          assistantTranscript = ""; 
+                          currentAssistantTurnDiv = null; 
+                      }
+                      break;
+
+                 // --- Reset AI accumulator on new response start ---
+                 case 'response.created':
+                     assistantTranscript = ""; 
+                     currentAssistantTurnDiv = null;
+                     console.log('Cleared assistant transcript accumulator on response.created.');
                      break;
-                 // Audio is handled by ontrack, not data channel messages
-                 // case 'response.audio.delta': break; 
-                 case 'transcription.text.delta':
-                     console.log('User transcription delta:', message.delta);
-                     // Accumulate deltas in a temporary variable or directly update UI if needed
-                     // For now, we'll wait for the completed message.
+
+                 // --- Handle other message types ---
+                 case 'response.text.delta': // Not used for primary display now
+                     console.log('Text delta (not displayed live):', message.delta); 
+                     break;
+                 case 'transcription.text.delta': // User transcription delta (not displayed live)
+                     console.log('User transcription delta (not displayed live):', message.delta);
                      break;
                  case 'session.warning':
                      console.warn('OpenAI session warning:', message.message);
                      break;
                  case 'session.error':
                      console.error('OpenAI session error:', message.code, message.message);
-                     // Log the detailed error object if present
-                     if(message.error) {
-                         console.error('Detailed error object from session.error:', message.error);
-                     }
-                     callStatus.textContent = `OpenAI Error: ${message.message}`;
+                     if(message.error) { console.error('Detailed error object:', message.error); }
+                     addTurnDiv("System", `OpenAI Error: ${message.message}`); // Display error
                      stopCall();
                      break;
                  case 'session.terminated':
                      console.log('OpenAI session terminated by server:', message);
-                     callStatus.textContent = 'Call ended by server.';
+                     addTurnDiv("System", "Call ended by server."); // Display termination
                      stopCall();
                      break;
-                 // --- Add cases for observed unhandled messages ---
-                 case 'response.audio_transcript.delta':
-                      // Accumulate the AI transcript delta
-                       // Add prefix only for the first delta of a response turn
-                     if (assistantTranscript === "") { // First delta for this AI response
-                        // Add newline if Me spoke last
-                        if (lastSpeaker === 'Me' && !currentCallTranscript.endsWith('\n')) {
-                            currentCallTranscript += '\n';
-                        }
-                        currentCallTranscript += "Actions: ";
-                        // Don't set lastSpeaker here, wait for output done?
-                     }
-                      assistantTranscript += message.delta;
-                      // Also add to the full transcript log
-                      currentCallTranscript += message.delta; 
+                 case 'response.done':
+                      if (message.response) {
+                          console.log("Full response object on 'response.done':", message.response);
+                          if (message.response.status === 'failed' && message.response.status_details) {
+                              console.error("Response generation failed. Details:", message.response.status_details);
+                          }
+                      }
+                      // Reset AI accumulator just in case
+                      assistantTranscript = "";
+                      currentAssistantTurnDiv = null;
                       break;
+                 
+                 // --- Add newline to log after AI turn completes --- 
+                 case 'response.output_item.done':
+                 case 'response.audio_transcript.done':
+                      // Add newline to transcript log if the last thing added was AI speech
+                      if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
+                          currentCallTranscript += '\n';
+                          console.log(`(${message.type}) Added newline after Actions turn in transcript log.`);
+                      }
+                      // Log these events anyway
+                      console.log(`Received Data Channel Event (Logged Only): ${message.type}`, message);
+                      break;
+                 
+                 // --- Log other potentially useful events --- 
                  case 'rate_limits.updated':
-                 case 'response.output_item.added':
+                 case 'response.output_item.added': 
                  case 'response.content_part.added':
                  case 'output_audio_buffer.started':
                  case 'output_audio_buffer.cleared':
-                 case 'response.audio.done':
-                      // Newline handling moved to start of next speaker turn
-                      // if (!currentCallTranscript.endsWith('\n')) { currentCallTranscript += '\n'; }
-                 case 'response.audio_transcript.done':
-                 case 'response.content_part.done':
-                 case 'response.output_item.done':
-                    // Use output_item.done as signal for AI turn end for formatting
-                    if (message.type === 'response.output_item.done') {
-                        lastSpeaker = 'Actions'; // Mark AI as last speaker
-                        // Ensure newline after AI turn
-                        if (!currentCallTranscript.endsWith('\n')) {
-                            currentCallTranscript += '\n';
-                        }
-                    }
+                 case 'response.audio.done': 
+                 case 'response.content_part.done': 
                  case 'conversation.item.truncated':
                  case 'input_audio_buffer.speech_started':
                  case 'input_audio_buffer.speech_stopped':
                  case 'input_audio_buffer.committed':
                  case 'conversation.item.created':
-                 case 'response.created':
-                     // Clear the transcript accumulator when a new response starts
-                     assistantTranscript = ""; 
-                     console.log('Cleared assistant transcript accumulator.');
-                 case 'response.done':
-                      // Log the full response object when done
-                      if (message.type === 'response.done' && message.response) {
-                          console.log("Full response object on 'response.done':", message.response);
-                          // Log the specific reason for failure if status is 'failed'
-                          if (message.response.status === 'failed' && message.response.status_details) {
-                              console.error("Response generation failed. Details:", message.response.status_details);
-                          }
-                      }
-                 case 'conversation.item.input_audio_transcription.delta':
-                      // Log delta, but update UI on completion
-                      console.log(`Received Data Channel Event: ${message.type}`, message);
+                 case 'conversation.item.input_audio_transcription.delta': // Remove incorrect logic from here
+                 // case 'response.created': // Handled above
+                 // case 'response.done': // Handled above
+                      // Log only if not handled elsewhere
+                      console.log(`Received Data Channel Event (Logged Only): ${message.type}`, message);
                       break;
-                 case 'conversation.item.input_audio_transcription.completed':
-                      // Just log these types for now to understand the flow
-                      console.log(`Received Data Channel Event: ${message.type}`, message);
-                      // Append completed user transcript to log
-                      if (message.transcript) {
-                          // Add newline if Actions spoke last
-                          if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
-                             currentCallTranscript += '\n';
-                          }
-                          const userLine = `Me: ${message.transcript.trim()}\n`; // Changed prefix
-                          // Ensure newline AFTER user line
-                          currentCallTranscript += userLine;
-                          lastSpeaker = 'Me';
-                          // Display the final transcript (currently in callStatus)
-                          callStatus.textContent = userLine; // Overwrite status with latest user line
-                      }
-                      break;
+
                  default:
-                     // Check if it's the generic error type
                      if (message.type === 'error' && message.error) {
                           console.error('Received generic OpenAI error message:', message.error);
-                          callStatus.textContent = `OpenAI Error: ${message.error.message || 'Unknown error'}`;
-                          stopCall(); // Stop on generic errors too
-                          break;
+                          addTurnDiv("System", `OpenAI Error: ${message.error.message || 'Unknown error'}`);
+                          stopCall();
+                     } else {
+                        console.log('Unhandled message type from Data Channel:', message.type, message);
                      }
-                      console.log('Unhandled message type from Data Channel:', message.type, message);
             }
         } catch (e) {
             console.error('Failed to parse incoming Data Channel message or handle event:', event.data, e);
@@ -956,37 +1042,102 @@ async function saveUserProfile() {
 }
 
 async function saveTranscriptToJournal() {
-    if (!currentJournalEntryId || !currentCallTranscript) {
-        console.log("No journal entry ID or transcript content to save.");
-        return;
+    // Use a temporary variable to hold the ID we need to use for both updates
+    const entryIdToProcess = currentJournalEntryId; 
+
+    if (!entryIdToProcess || !currentCallTranscript) {
+        console.log("No journal entry ID or transcript content to save/process.");
+        // Reset state even if nothing was saved
+        currentJournalEntryId = null; 
+        currentCallTranscript = ""; 
+        lastSpeaker = null; 
+        return; 
     }
 
-    console.log(`Saving transcript to journal entry ID: ${currentJournalEntryId}`);
+    // Remove .trim() - Keep the trailing newline if it was intentionally added
+    const transcriptToSave = currentCallTranscript; 
+    console.log(`Saving transcript with prefixes to journal entry ID: ${entryIdToProcess}`);
+    // console.log("Transcript content being saved:", transcriptToSave); 
+
     try {
-        const { error } = await _supabase
+        // --- Step 1: Save the transcript ---
+        const { data: updateData, error: updateError } = await _supabase
             .from('journal_entries')
             .update({ 
-                full_transcript: currentCallTranscript.trim(),
-                // Optionally set an ended_at timestamp here if you add the column
-                // ended_at: new Date()
+                full_transcript: transcriptToSave, // Save transcript as is
              }) 
-            .eq('id', currentJournalEntryId)
-            .eq('user_id', currentUser.id); // Ensure user can only update their own
+            .eq('id', entryIdToProcess)
+            .eq('user_id', currentUser.id)
+            .select('id') // Select the id back to confirm
+            .single();
 
-        if (error) {
-            throw error;
+        if (updateError) {
+            console.error("Error saving transcript to journal:", updateError);
+            // Decide if we should still attempt action item generation? Maybe not if transcript save failed.
+            // Reset state and exit
+            currentJournalEntryId = null; 
+            currentCallTranscript = ""; 
+            lastSpeaker = null; 
+            return; 
         }
-        console.log("Transcript saved successfully to journal entry.");
-        // Refresh journal entries displayed on the page
-        loadJournalEntries();
+        
+        // --- Check if update actually happened (optional but good practice) ---
+        if (!updateData || !updateData.id) {
+             console.warn("Transcript update seemed to succeed but no ID returned. Aborting action item generation.");
+             currentJournalEntryId = null; 
+             currentCallTranscript = ""; 
+             lastSpeaker = null; 
+             return; 
+        }
+
+        console.log("Transcript saved successfully to journal entry:", entryIdToProcess);
+
+        // --- Step 2: Trigger Action Item Generation (if transcript saved) ---
+        console.log(`Triggering action item generation for entry: ${entryIdToProcess}`);
+        // Get current session token for the backend API call
+        const { data: { session }, error: sessionError } = await _supabase.auth.getSession();
+        if (sessionError || !session) {
+             console.error('Error getting session token before generating action items:', sessionError);
+             // Transcript is saved, but action items won't be generated now. Refresh might show them later.
+             loadJournalEntries(); // Refresh journal entries anyway
+        } else {
+            try {
+                const backendUrl = config.BACKEND_API_URL || ''; // Get backend URL from config.js
+                const response = await fetch(`${backendUrl}/api/generate-action-items`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ journal_entry_id: entryIdToProcess })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error(`Action item generation failed: ${response.status}`, errorData);
+                    // Handle specific errors? e.g., 404 transcript not found (shouldn't happen here)
+                } else {
+                    const result = await response.json();
+                    console.log("Action item generation successful:", result);
+                }
+            } catch (fetchError) {
+                 console.error("Network or fetch error calling /api/generate-action-items:", fetchError);
+            } finally {
+                 // Refresh journal entries regardless of action item success/failure
+                 // The entry list will show transcript immediately, and action items if they were generated & saved.
+                 loadJournalEntries(); 
+            }
+        }
 
     } catch(error) {
-        console.error("Error saving transcript to journal:", error);
-        // Inform user? Maybe just log for now.
+        // Catch errors from the initial transcript update attempt
+        console.error("Error during transcript saving phase:", error);
+    } finally {
+        // Reset state after all processing attempts for this entry ID
+        currentJournalEntryId = null; 
+        currentCallTranscript = ""; 
+        lastSpeaker = null; 
     }
-    // Reset after attempt
-    currentJournalEntryId = null;
-    currentCallTranscript = "";
 }
 
 // --- Add Event Listener for Toggling Transcripts ---
@@ -1013,3 +1164,26 @@ if (journalEntriesDiv) {
         }
     });
 }
+
+// Add CSS for the action items list (Optional, basic styling)
+const styleSheet = document.createElement("style");
+styleSheet.type = "text/css";
+styleSheet.innerText = `
+.action-items-list { 
+    list-style: none; 
+    padding-left: 0; 
+    margin-top: 5px; 
+    margin-bottom: 10px; 
+}
+.action-items-list li { 
+    margin-bottom: 4px; 
+}
+.action-items-list input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+}
+.action-items-list label {
+    cursor: pointer;
+}
+`;
+document.head.appendChild(styleSheet);
