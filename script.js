@@ -122,7 +122,7 @@ async function loadJournalEntries() {
     try {
         const { data: entries, error } = await _supabase
             .from('journal_entries')
-            .select('*') // Select all columns
+            .select('*, full_transcript') // Select all columns INCLUDING the transcript
             // .eq('user_id', currentUser.id) // RLS handles this, but explicit check is fine too
             .order('created_at', { ascending: false }); // Show newest first
 
@@ -141,20 +141,52 @@ async function loadJournalEntries() {
         journalEntriesDiv.innerHTML = '';
 
         // Display entries
+        let transcriptHTML = ''; // Declare once outside the loop
         entries.forEach(entry => {
             const entryElement = document.createElement('div');
-            entryElement.classList.add('journal-entry'); // For potential styling
+            entryElement.classList.add('journal-entry');
+            entryElement.dataset.entryId = entry.id; // Store ID for potential future use
 
             // Format date nicely
             const date = new Date(entry.created_at).toLocaleString();
 
-            let contentHTML = `<strong>${date} - ${entry.call_type.toUpperCase()}</strong><br>`;
-            if (entry.intention) contentHTML += `<em>Intention:</em> ${entry.intention}<br>`;
-            if (entry.action_plan) contentHTML += `<em>Action Plan:</em> ${entry.action_plan}<br>`;
-            if (entry.content) contentHTML += `<em>Reflection:</em> ${entry.content}<br>`;
-            if (entry.gratitude) contentHTML += `<em>Gratitude:</em> ${entry.gratitude}<br>`;
-            
-            entryElement.innerHTML = contentHTML + '<hr>'; // Add a separator
+            // Make the header clickable
+            let headerHTML = `<strong class="journal-entry-header" style="cursor: pointer;">${date} - ${entry.call_type.toUpperCase()} (Click to view transcript)</strong><br>`;
+            if (entry.intention) headerHTML += `<em>Intention:</em> ${entry.intention}<br>`;
+            if (entry.action_plan) headerHTML += `<em>Action Plan:</em> ${entry.action_plan}<br>`;
+            // Add other non-transcript fields you might want visible initially
+            // if (entry.content) headerHTML += `<em>Reflection:</em> ${entry.content}<br>`;
+            // if (entry.gratitude) headerHTML += `<em>Gratitude:</em> ${entry.gratitude}<br>`;
+
+            // Add the hidden transcript section
+            if (entry.full_transcript) {
+                // Use <pre> for preformatted text, including line breaks
+                 transcriptHTML = `
+                    <div class="journal-transcript" style="display: none; margin-top: 10px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ccc;">
+                        <strong>Full Transcript:</strong>
+                        <pre style="white-space: pre-wrap; word-wrap: break-word;">${entry.full_transcript}</pre>
+                    </div>
+                `;
+            } else {
+                 // Message if no transcript is saved
+                 transcriptHTML = `
+                    <div class="journal-transcript" style="display: none; margin-top: 10px;">
+                        <p><em>No full transcript saved for this entry.</em></p>
+                    </div>
+                `;
+            }
+
+            // Set the combined HTML
+            let visibleContentHTML = headerHTML;
+            if (entry.intention) visibleContentHTML += `<em>Intention:</em> ${entry.intention}<br>`;
+            if (entry.action_plan) visibleContentHTML += `<em>Action Plan:</em> ${entry.action_plan}<br>`;
+            // Add other non-transcript fields you might want visible initially
+            // if (entry.content) visibleContentHTML += `<em>Reflection:</em> ${entry.content}<br>`;
+            // if (entry.gratitude) visibleContentHTML += `<em>Gratitude:</em> ${entry.gratitude}<br>`;
+
+            // Set the combined HTML
+            entryElement.innerHTML = visibleContentHTML + transcriptHTML + '<hr>'; // Add a separator
+
             journalEntriesDiv.appendChild(entryElement);
         });
 
@@ -207,6 +239,45 @@ async function startCall(callType) {
         alert('Please log in first.');
         return;
     }
+
+    // --- Moved Check & Initial Entry Creation Earlier ---
+    if (!currentUser || !currentUser.id) {
+        console.error("User object or ID not available at startCall initiation.");
+        alert("User authentication issue. Cannot start call. Please try refreshing.");
+        callStatus.textContent = 'Auth Error.';
+        currentCallType = null;
+        return;
+    }
+
+    try {
+        console.log("Creating initial journal entry...");
+        const { data: newEntry, error: insertError } = await _supabase
+            .from('journal_entries')
+            .insert({ 
+                user_id: currentUser.id,
+                call_type: currentCallType 
+            })
+            .select('id')
+            .single();
+
+        if (insertError) {
+            throw insertError;
+        }
+        if (!newEntry || !newEntry.id) {
+            throw new Error("Failed to get ID for new journal entry.");
+        }
+        currentJournalEntryId = newEntry.id;
+        console.log(`Initial journal entry created with ID: ${currentJournalEntryId}`);
+    } catch (error) {
+        console.error('Error creating initial journal entry:', error);
+        alert(`Failed to create journal entry: ${error.message}\nCall cannot proceed.`);
+        callStatus.textContent = 'Journal entry error.';
+        if (stopCallBtn) stopCallBtn.style.display = 'none';
+        currentCallType = null;
+        return; 
+    }
+    // --- End Moved Check & Initial Entry Creation ---
+
     // Check if a call is already in progress via peerConnection state
     if (peerConnection && peerConnection.connectionState !== 'closed' && peerConnection.connectionState !== 'failed') {
         console.log('WebRTC call already in progress. State:', peerConnection.connectionState);
@@ -224,6 +295,7 @@ async function startCall(callType) {
     dataChannel = null;
     
     if (stopCallBtn) {
+        console.log("Showing Stop Call button");
         stopCallBtn.style.display = 'inline-block';
     }
 
@@ -365,41 +437,6 @@ async function startCall(callType) {
          callStatus.textContent = 'WebRTC Connection Error.';
          await stopCall(); // Ensure cleanup on failure
     }
-
-    // --- Create Initial Journal Entry ---
-    try {
-        console.log("Creating initial journal entry...");
-        const { data: newEntry, error: insertError } = await _supabase
-            .from('journal_entries')
-            .insert({ 
-                user_id: currentUser.id,
-                call_type: currentCallType 
-                // Other fields like intentions, summary, transcript will be updated later
-            })
-            .select('id') // Select the ID of the newly created row
-            .single(); // Expect only one row back
-
-        if (insertError) {
-            throw insertError;
-        }
-
-        if (!newEntry || !newEntry.id) {
-            throw new Error("Failed to get ID for new journal entry.");
-        }
-
-        currentJournalEntryId = newEntry.id;
-        console.log(`Initial journal entry created with ID: ${currentJournalEntryId}`);
-
-    } catch (error) {
-         console.error('Error creating initial journal entry:', error);
-         alert(`Failed to create journal entry: ${error.message}\nCall cannot proceed.`);
-         callStatus.textContent = 'Journal entry error.';
-         if (stopCallBtn) stopCallBtn.style.display = 'none';
-         // Reset critical state if entry creation fails
-         currentCallType = null;
-         return; 
-    }
-    // --- End Create Initial Journal Entry ---
 }
 
 // --- NEW Function to connect to OpenAI via WebRTC ---
@@ -567,11 +604,13 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  // --- Add cases for observed unhandled messages ---
                  case 'response.audio_transcript.delta':
                       // Accumulate the AI transcript delta
+                      // Add prefix only for the first delta of a response turn
+                      if (assistantTranscript === "") {
+                          currentCallTranscript += "Buddy: "; // Or Support:, etc.
+                      }
                       assistantTranscript += message.delta;
                       // Also add to the full transcript log
                       currentCallTranscript += message.delta; 
-                      // Update UI with the accumulated transcript - REMOVED as requested
-                      // callStatus.textContent = `Assistant: ${assistantTranscript}`;
                       break;
                  case 'rate_limits.updated':
                  case 'response.output_item.added':
@@ -579,6 +618,8 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  case 'output_audio_buffer.started':
                  case 'output_audio_buffer.cleared':
                  case 'response.audio.done':
+                      // Add a newline after AI finishes speaking audio for a turn
+                      currentCallTranscript += "\n";
                  case 'response.audio_transcript.done':
                  case 'response.content_part.done':
                  case 'response.output_item.done':
@@ -724,6 +765,7 @@ async function stopCall() { // Make async if needed for future cleanup steps
 
     // Hide stop call button
     if (stopCallBtn) {
+        console.log("Hiding Stop Call button");
         stopCallBtn.style.display = 'none';
     }
     
@@ -909,4 +951,29 @@ async function saveTranscriptToJournal() {
     // Reset after attempt
     currentJournalEntryId = null;
     currentCallTranscript = "";
+}
+
+// --- Add Event Listener for Toggling Transcripts ---
+if (journalEntriesDiv) {
+    journalEntriesDiv.addEventListener('click', (event) => {
+        // Check if the clicked element is a header
+        if (event.target.classList.contains('journal-entry-header')) {
+            // Find the parent journal-entry element
+            const entryElement = event.target.closest('.journal-entry');
+            if (entryElement) {
+                // Find the transcript div within this entry
+                const transcriptDiv = entryElement.querySelector('.journal-transcript');
+                if (transcriptDiv) {
+                    // Toggle display
+                    const isHidden = transcriptDiv.style.display === 'none';
+                    transcriptDiv.style.display = isHidden ? 'block' : 'none';
+                    // Optional: Update header text 
+                    event.target.textContent = event.target.textContent.replace(
+                        isHidden ? '(Click to view transcript)' : '(Click to hide transcript)',
+                        isHidden ? '(Click to hide transcript)' : '(Click to view transcript)'
+                    );
+                }
+            }
+        }
+    });
 }
