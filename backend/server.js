@@ -99,7 +99,11 @@ app.post('/api/openai-session', async (req, res) => {
                 voice: "echo",
                 input_audio_format: "pcm16",
                 output_audio_format: "pcm16",
-                turn_detection: null,
+                turn_detection: { 
+                    type: "server_vad",
+                    threshold: 0.5,
+                    silence_duration_ms: 700
+                },
                 input_audio_transcription: {
                     model: "whisper-1"
                 }
@@ -159,10 +163,14 @@ app.post('/api/create-realtime-session', async (req, res) => {
                 voice: "echo",
                 input_audio_format: "pcm16",
                 output_audio_format: "pcm16",
+                turn_detection: { 
+                    type: "server_vad",
+                    threshold: 0.5,
+                    silence_duration_ms: 700
+                },
                 input_audio_transcription: {
                     model: "whisper-1"
-                },
-                turn_detection: null
+                }
             })
         });
         
