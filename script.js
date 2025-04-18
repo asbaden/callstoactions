@@ -219,6 +219,7 @@ let assistantTranscript = ""; // Variable to accumulate AI transcript
 let currentCallType = null; 
 let currentCallTranscript = "";
 let currentJournalEntryId = null;
+let lastSpeaker = null; // Track last speaker for formatting ('Me', 'Actions', null)
 
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
@@ -233,6 +234,7 @@ async function startCall(callType) {
     currentCallType = callType;
     currentCallTranscript = "";
     currentJournalEntryId = null;
+    lastSpeaker = null; // Reset on new call
     // --- End reset ---
 
     if (!currentUser) {
@@ -604,10 +606,15 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  // --- Add cases for observed unhandled messages ---
                  case 'response.audio_transcript.delta':
                       // Accumulate the AI transcript delta
-                      // Add prefix only for the first delta of a response turn
-                      if (assistantTranscript === "") {
-                          currentCallTranscript += "Actions: "; // Changed prefix
-                      }
+                       // Add prefix only for the first delta of a response turn
+                     if (assistantTranscript === "") { // First delta for this AI response
+                        // Add newline if Me spoke last
+                        if (lastSpeaker === 'Me' && !currentCallTranscript.endsWith('\n')) {
+                            currentCallTranscript += '\n';
+                        }
+                        currentCallTranscript += "Actions: ";
+                        lastSpeaker = 'Actions';
+                     }
                       assistantTranscript += message.delta;
                       // Also add to the full transcript log
                       currentCallTranscript += message.delta; 
@@ -618,8 +625,8 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  case 'output_audio_buffer.started':
                  case 'output_audio_buffer.cleared':
                  case 'response.audio.done':
-                      // Add a newline after AI finishes speaking audio for a turn
-                      currentCallTranscript += "\n";
+                      // Newline handling moved to start of next speaker turn
+                      // if (!currentCallTranscript.endsWith('\n')) { currentCallTranscript += '\n'; }
                  case 'response.audio_transcript.done':
                  case 'response.content_part.done':
                  case 'response.output_item.done':
@@ -650,10 +657,15 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                       console.log(`Received Data Channel Event: ${message.type}`, message);
                       // Append completed user transcript to log
                       if (message.transcript) {
-                         const userLine = `Me: ${message.transcript.trim()}\n`;
-                         currentCallTranscript += userLine;
-                         // Display the final transcript (currently in callStatus)
-                         callStatus.textContent = userLine; // Overwrite status with latest user line
+                          // Add newline if Actions spoke last
+                          if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
+                             currentCallTranscript += '\n';
+                          }
+                          const userLine = `Me: ${message.transcript.trim()}\n`; // Changed prefix
+                          currentCallTranscript += userLine;
+                          lastSpeaker = 'Me';
+                          // Display the final transcript (currently in callStatus)
+                          callStatus.textContent = userLine; // Overwrite status with latest user line
                       }
                       break;
                  default:
