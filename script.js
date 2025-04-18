@@ -244,7 +244,7 @@ async function startCall(callType) {
 
     // --- Moved Check & Initial Entry Creation Earlier ---
     if (!currentUser || !currentUser.id) {
-        console.error("User object or ID not available at startCall initiation.");
+        console.error("User object or ID not available at startCall initiation. Current state:", currentUser);
         alert("User authentication issue. Cannot start call. Please try refreshing.");
         callStatus.textContent = 'Auth Error.';
         currentCallType = null;
@@ -613,7 +613,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                             currentCallTranscript += '\n';
                         }
                         currentCallTranscript += "Actions: ";
-                        lastSpeaker = 'Actions';
+                        // Don't set lastSpeaker here, wait for output done?
                      }
                       assistantTranscript += message.delta;
                       // Also add to the full transcript log
@@ -630,6 +630,14 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  case 'response.audio_transcript.done':
                  case 'response.content_part.done':
                  case 'response.output_item.done':
+                    // Use output_item.done as signal for AI turn end for formatting
+                    if (message.type === 'response.output_item.done') {
+                        lastSpeaker = 'Actions'; // Mark AI as last speaker
+                        // Ensure newline after AI turn
+                        if (!currentCallTranscript.endsWith('\n')) {
+                            currentCallTranscript += '\n';
+                        }
+                    }
                  case 'conversation.item.truncated':
                  case 'input_audio_buffer.speech_started':
                  case 'input_audio_buffer.speech_stopped':
@@ -662,6 +670,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                              currentCallTranscript += '\n';
                           }
                           const userLine = `Me: ${message.transcript.trim()}\n`; // Changed prefix
+                          // Ensure newline AFTER user line
                           currentCallTranscript += userLine;
                           lastSpeaker = 'Me';
                           // Display the final transcript (currently in callStatus)
