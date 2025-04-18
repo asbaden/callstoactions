@@ -172,6 +172,7 @@ let openaiSessionId = null; // Store the OpenAI session ID (Still potentially us
 let peerConnection = null;
 let dataChannel = null;
 let remoteAudioElement = null; // To play back audio from OpenAI
+let assistantTranscript = ""; // Variable to accumulate AI transcript
 
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
@@ -224,6 +225,7 @@ async function startCall(callType) {
     // 2. Fetch OpenAI Session Token (Ephemeral Key)
     let sessionData;
     let ephemeralKey;
+    let instructions; // Variable to hold instructions
     try {
         const sessionEndpointUrl = `${BACKEND_API_URL}/api/openai-session`;
         console.log(`Fetching OpenAI session token from ${sessionEndpointUrl}...`);
@@ -251,6 +253,14 @@ async function startCall(callType) {
         ephemeralKey = sessionData.client_secret.value;
         console.log('Received OpenAI Session ID:', openaiSessionId);
         console.log('Received Ephemeral Key (Client Secret)');
+
+        // Determine instructions based on call type (needed for session.update)
+        instructions = "You are CallsToAction, a helpful voice assistant for addiction recovery check-ins. Be empathetic, supportive, and guide the user through their check-in process. Keep responses relatively concise.";
+        if (callType === 'morning') {
+            instructions += " Focus on setting intentions and planning the day positively.";
+        } else if (callType === 'evening') {
+            instructions += " Focus on reflection, gratitude, and winding down.";
+        }
 
     } catch (error) {
         console.error('Error fetching OpenAI session token:', error);
@@ -287,7 +297,7 @@ async function startCall(callType) {
 
     // 4. Initiate WebRTC Connection
     try {
-        await connectOpenAIWebRTC(ephemeralKey, callType);
+        await connectOpenAIWebRTC(ephemeralKey, callType, instructions);
     } catch (error) {
          console.error('Error initiating WebRTC connection:', error);
          alert(`Failed to connect via WebRTC: ${error.message}`);
@@ -297,7 +307,7 @@ async function startCall(callType) {
 }
 
 // --- NEW Function to connect to OpenAI via WebRTC ---
-async function connectOpenAIWebRTC(ephemeralKey, callType) {
+async function connectOpenAIWebRTC(ephemeralKey, callType, instructions) {
     console.log("Initiating WebRTC connection...");
     callStatus.textContent = 'Setting up WebRTC...';
 
@@ -349,17 +359,36 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
     // Handle incoming audio track from OpenAI
     peerConnection.ontrack = (event) => {
         console.log('Remote track received:', event.track, event.streams);
+        console.log(`Track details - Kind: ${event.track.kind}, ID: ${event.track.id}, Enabled: ${event.track.enabled}, Muted: ${event.track.muted}, ReadyState: ${event.track.readyState}`);
+        
+        // Attempt to ensure the track is enabled (might not be necessary, but good practice)
+        event.track.enabled = true;
+        
         if (event.streams && event.streams[0]) {
             if (!remoteAudioElement) {
                 // Create an audio element if it doesn't exist
                 remoteAudioElement = document.createElement('audio');
                 remoteAudioElement.autoplay = true;
-                // Optional: Append to body for debugging controls
-                // document.body.appendChild(remoteAudioElement);
+                // remoteAudioElement.controls = true; // Remove controls
+                // document.body.appendChild(remoteAudioElement); // Don't append to body
                 console.log('Created <audio> element for remote stream.');
             }
             remoteAudioElement.srcObject = event.streams[0];
             console.log('Attached remote stream to audio element.');
+            
+            // --- Attempt to unmute and play --- 
+            remoteAudioElement.muted = false; 
+            // Try playing explicitly after a short delay, sometimes needed
+            setTimeout(() => {
+                remoteAudioElement.play().then(() => {
+                    console.log('Remote audio element playback initiated.');
+                }).catch(error => {
+                    console.error('Error trying to play remote audio element:', error);
+                    // Autoplay might be blocked, user might need to click the element's play button
+                });
+            }, 100);
+            // --- End unmute/play attempt ---
+            
         } else {
              console.warn("Received track event without stream data.");
         }
@@ -382,9 +411,20 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
 
     dataChannel.onopen = () => {
         console.log("Data Channel 'oai-events' opened.");
+        // Send session.update with instructions as per docs example
+        if (instructions) {
+            const event = {
+                type: "session.update",
+                session: {
+                    instructions: instructions
+                }
+            };
+            sendDataChannelMessage(event);
+        } else {
+             console.warn("Instructions not available to send session.update");
+        }
+        // Directly set status now
         callStatus.textContent = `${callType} call ready. Speak now...`;
-         // We can potentially send configuration messages here if needed by OpenAI via DataChannel
-         // Example: sendDataChannelMessage({ type: 'session.config', ... });
     };
 
     dataChannel.onclose = () => {
@@ -406,6 +446,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
             switch (message.type) {
                  case 'session.created': // Might not be sent over data channel, connection state implies readiness
                      console.log('OpenAI session confirmed via Data Channel (or inferred):', message);
+                     // Check if session data provides useful info
                      break;
                  case 'response.text.delta':
                      callStatus.textContent = `Assistant: ${message.delta}`; // Simple update
@@ -415,22 +456,81 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  // case 'response.audio.delta': break; 
                  case 'transcription.text.delta':
                      console.log('User transcription delta:', message.delta);
+                     // Accumulate deltas in a temporary variable or directly update UI if needed
+                     // For now, we'll wait for the completed message.
                      break;
                  case 'session.warning':
                      console.warn('OpenAI session warning:', message.message);
                      break;
                  case 'session.error':
                      console.error('OpenAI session error:', message.code, message.message);
+                     // Log the detailed error object if present
+                     if(message.error) {
+                         console.error('Detailed error object from session.error:', message.error);
+                     }
                      callStatus.textContent = `OpenAI Error: ${message.message}`;
                      stopCall();
                      break;
                  case 'session.terminated':
-                     console.log('OpenAI session terminated:', message);
+                     console.log('OpenAI session terminated by server:', message);
                      callStatus.textContent = 'Call ended by server.';
                      stopCall();
                      break;
+                 // --- Add cases for observed unhandled messages ---
+                 case 'response.audio_transcript.delta':
+                      // Accumulate the AI transcript delta
+                      assistantTranscript += message.delta;
+                      // Update UI with the accumulated transcript - REMOVED as requested
+                      // callStatus.textContent = `Assistant: ${assistantTranscript}`;
+                      break;
+                 case 'rate_limits.updated':
+                 case 'response.output_item.added':
+                 case 'response.content_part.added':
+                 case 'output_audio_buffer.started':
+                 case 'output_audio_buffer.cleared':
+                 case 'response.audio.done':
+                 case 'response.audio_transcript.done':
+                 case 'response.content_part.done':
+                 case 'response.output_item.done':
+                 case 'conversation.item.truncated':
+                 case 'input_audio_buffer.speech_started':
+                 case 'input_audio_buffer.speech_stopped':
+                 case 'input_audio_buffer.committed':
+                 case 'conversation.item.created':
+                 case 'response.created':
+                     // Clear the transcript accumulator when a new response starts
+                     assistantTranscript = ""; 
+                     console.log('Cleared assistant transcript accumulator.');
+                 case 'response.done':
+                      // Log the full response object when done
+                      if (message.type === 'response.done' && message.response) {
+                          console.log("Full response object on 'response.done':", message.response);
+                          // Log the specific reason for failure if status is 'failed'
+                          if (message.response.status === 'failed' && message.response.status_details) {
+                              console.error("Response generation failed. Details:", message.response.status_details);
+                          }
+                      }
+                 case 'conversation.item.input_audio_transcription.delta':
+                      // Log delta, but update UI on completion
+                      console.log(`Received Data Channel Event: ${message.type}`, message);
+                      break;
+                 case 'conversation.item.input_audio_transcription.completed':
+                      // Just log these types for now to understand the flow
+                      console.log(`Received Data Channel Event: ${message.type}`, message);
+                      // Display the final transcript
+                      if (message.transcript) {
+                          callStatus.textContent = `You said: "${message.transcript.trim()}"`;
+                      }
+                      break;
                  default:
-                     console.log('Unhandled message type from Data Channel:', message.type, message);
+                     // Check if it's the generic error type
+                     if (message.type === 'error' && message.error) {
+                          console.error('Received generic OpenAI error message:', message.error);
+                          callStatus.textContent = `OpenAI Error: ${message.error.message || 'Unknown error'}`;
+                          stopCall(); // Stop on generic errors too
+                          break;
+                     }
+                      console.log('Unhandled message type from Data Channel:', message.type, message);
             }
         } catch (e) {
             console.error('Failed to parse incoming Data Channel message or handle event:', event.data, e);
@@ -481,11 +581,20 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
     // Connection state change handler will update status further
 }
 
-// --- Remove old WebSocket functions ---
-// function connectOpenAIWebSocket(...) { ... }
-// function base64ToArrayBuffer(...) { ... }
-// function playAudio(...) { ... }
-// function playNextChunk() { ... }
+// --- Helper to send messages via DataChannel ---
+function sendDataChannelMessage(messageObject) {
+    if (dataChannel && dataChannel.readyState === 'open') {
+        try {
+            const messageString = JSON.stringify(messageObject);
+            dataChannel.send(messageString);
+            console.log('Sent message via DataChannel:', messageObject);
+        } catch (error) {
+             console.error("Error sending message via DataChannel:", error, messageObject);
+        }
+    } else {
+        console.warn('Attempted to send message but DataChannel not open. State:', dataChannel?.readyState, messageObject);
+    }
+}
 
 // --- Update Stop Call function for WebRTC ---
 async function stopCall() { // Make async if needed for future cleanup steps
