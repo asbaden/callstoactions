@@ -606,7 +606,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                       // Accumulate the AI transcript delta
                       // Add prefix only for the first delta of a response turn
                       if (assistantTranscript === "") {
-                          currentCallTranscript += "Buddy: "; // Or Support:, etc.
+                          currentCallTranscript += "Actions: "; // Changed prefix
                       }
                       assistantTranscript += message.delta;
                       // Also add to the full transcript log
@@ -650,7 +650,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                       console.log(`Received Data Channel Event: ${message.type}`, message);
                       // Append completed user transcript to log
                       if (message.transcript) {
-                         const userLine = `User: ${message.transcript.trim()}\n`;
+                         const userLine = `Me: ${message.transcript.trim()}\n`;
                          currentCallTranscript += userLine;
                          // Display the final transcript (currently in callStatus)
                          callStatus.textContent = userLine; // Overwrite status with latest user line
