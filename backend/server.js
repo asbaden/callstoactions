@@ -96,6 +96,13 @@ app.post('/api/openai-session', async (req, res) => {
                 model: "gpt-4o-realtime-preview",
                 modalities: ["audio", "text"],
                 instructions: instructions,
+                voice: "echo",
+                input_audio_format: "pcm16",
+                output_audio_format: "pcm16",
+                turn_detection: null,
+                input_audio_transcription: {
+                    model: "whisper-1"
+                }
             })
         });
 
@@ -155,10 +162,7 @@ app.post('/api/create-realtime-session', async (req, res) => {
                 input_audio_transcription: {
                     model: "whisper-1"
                 },
-                turn_detection: {
-                    type: "server_vad",
-                    threshold: 0.5
-                }
+                turn_detection: null
             })
         });
         
