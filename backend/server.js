@@ -74,14 +74,34 @@ app.post('/api/openai-session', async (req, res) => {
         }
         console.log(`Authenticated user: ${user.email}`);
 
-        // Optional: Extract call type from request body if needed for instructions
-        const { call_type } = req.body; 
-        let instructions = "You are CallsToAction, a helpful voice assistant for addiction recovery check-ins. Be empathetic, supportive, and guide the user through their check-in process. Keep responses relatively concise.";
-        if (call_type === 'morning') {
-             instructions += " Focus on setting intentions and planning the day positively.";
-        } else if (call_type === 'evening') {
-             instructions += " Focus on reflection, gratitude, and winding down.";
+        // Extract data sent from the client
+        const { call_type, user_name, days_sober } = req.body;
+
+        // --- Construct dynamic instructions ---
+        let userName = user_name || "there"; // Fallback name
+        let greeting = `Hello ${userName}.`;
+
+        // Add sobriety congratulations for morning calls if data is valid
+        if (call_type === 'morning' && typeof days_sober === 'number' && days_sober >= 0) {
+            // Handle pluralization correctly
+            const dayWord = days_sober === 1 ? "day" : "days";
+             greeting += ` Congratulations on ${days_sober} ${dayWord} of recovery!`;
         }
+
+        let baseInstructions = `You are CallsToAction, an empathetic AI voice assistant helping users with addiction recovery check-ins. Your tone should be supportive, non-judgmental, and encouraging. Keep conversational turns relatively concise. Start the call by greeting the user.`;
+        let specificInstructions = "";
+
+        if (call_type === 'morning') {
+            specificInstructions = " This is a morning check-in. Guide the user to set positive intentions and briefly plan their day with recovery in mind.";
+        } else if (call_type === 'evening') {
+            specificInstructions = " This is an evening check-in. Guide the user to reflect on their day, focusing on challenges, successes, and gratitude related to their recovery.";
+            // TODO: Later, add logic here to incorporate recalled intentions if sent from client
+        }
+
+        // Combine instructions
+        const finalInstructions = `${baseInstructions} Your first sentence should be: "${greeting}". ${specificInstructions}`;
+        console.log("Generated Instructions:", finalInstructions); // Log for debugging
+        // --- End dynamic instructions ---
 
         // 2. Create OpenAI Realtime Session using node-fetch
         console.log("Requesting OpenAI Realtime session...");
@@ -95,7 +115,7 @@ app.post('/api/openai-session', async (req, res) => {
             body: JSON.stringify({
                 model: "gpt-4o-realtime-preview",
                 modalities: ["audio", "text"],
-                instructions: instructions,
+                instructions: finalInstructions,
                 voice: "echo",
                 input_audio_format: "pcm16",
                 output_audio_format: "pcm16",

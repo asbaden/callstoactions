@@ -16,8 +16,14 @@ const journalSection = document.getElementById('journal-section');
 const callStatus = document.getElementById('call-status');
 const journalEntriesDiv = document.getElementById('journal-entries');
 
+// Profile elements
+const sobrietyDateInput = document.getElementById('sobriety-date');
+const saveProfileButton = document.getElementById('save-profile-button');
+const profileStatus = document.getElementById('profile-status');
+
 // --- Authentication State ---
 let currentUser = null;
+let userProfile = null; // To store fetched profile data
 
 // Function to update UI based on authentication status
 const updateUI = (user) => {
@@ -30,12 +36,15 @@ const updateUI = (user) => {
         journalSection.style.display = 'block';
         console.log('UI Updated: User logged in:', user.email);
         loadJournalEntries();
+        loadUserProfile(); // Load profile data including sobriety date
     } else {
         // User is logged out
         loginButton.style.display = 'block';
         logoutButton.style.display = 'none';
         callControls.style.display = 'none';
         journalSection.style.display = 'none';
+        if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
+        if (profileStatus) profileStatus.textContent = ''; // Clear profile status
         if (journalEntriesDiv) journalEntriesDiv.innerHTML = ''; // Clear entries
         console.log('UI Updated: User logged out');
     }
@@ -223,9 +232,53 @@ async function startCall(callType) {
     console.log('Got Supabase Access Token.');
 
     // 2. Fetch OpenAI Session Token (Ephemeral Key)
-    let sessionData;
-    let ephemeralKey;
-    let instructions; // Variable to hold instructions
+    let dynamicInstructionsData = {}; // Object to hold dynamic data for backend
+
+    // Pre-fetch user name from auth metadata (fallback)
+    dynamicInstructionsData.userName = currentUser.user_metadata?.full_name || currentUser.email;
+
+    // Fetch latest profile data before starting call
+    // Use the locally cached userProfile if available, otherwise fetch again
+    let currentProfile = userProfile;
+    if (!currentProfile) {
+        console.log("No cached profile, fetching before call...");
+        try {
+            const { data, error } = await _supabase
+                .from('profiles')
+                .select(`sobriety_date`)
+                .eq('user_id', currentUser.id)
+                .maybeSingle();
+            if (error && status !== 406) throw error;
+            currentProfile = data; // Update local cache
+        } catch (error) {
+             console.error('Error fetching profile before call:', error);
+             // Proceed without profile data if fetch fails
+             currentProfile = null;
+        }
+    }
+
+    // Calculate days sober if date exists
+    if (currentProfile?.sobriety_date) {
+        try {
+            const sobrietyDate = new Date(currentProfile.sobriety_date);
+            const today = new Date();
+            // Reset time part to compare dates only
+            sobrietyDate.setHours(0, 0, 0, 0);
+            today.setHours(0, 0, 0, 0);
+
+            if (!isNaN(sobrietyDate)) {
+                const diffTime = Math.abs(today - sobrietyDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                // Include day 1, so add 1 if date is not today OR if it IS today
+                dynamicInstructionsData.daysSober = diffDays >= 0 ? diffDays + 1 : 0; 
+                console.log(`Calculated days sober: ${dynamicInstructionsData.daysSober}`);
+            }
+        } catch (e) {
+             console.error("Error calculating days sober:", e);
+        }
+    }
+
+    // Fetch session token and pass dynamic data
     try {
         const sessionEndpointUrl = `${BACKEND_API_URL}/api/openai-session`;
         console.log(`Fetching OpenAI session token from ${sessionEndpointUrl}...`);
@@ -236,14 +289,19 @@ async function startCall(callType) {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ call_type: callType })
+            // Send call type and dynamic data (userName, daysSober)
+            body: JSON.stringify({ 
+                call_type: callType, 
+                user_name: dynamicInstructionsData.userName,
+                days_sober: dynamicInstructionsData.daysSober // Will be undefined if not calculated
+            })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`Failed to get OpenAI session token: ${response.status} ${errorText}`);
         }
-        sessionData = await response.json();
+        const sessionData = await response.json();
 
         if (!sessionData.client_secret || !sessionData.client_secret.value || !sessionData.id) {
             throw new Error('Invalid session data received from backend.');
@@ -253,14 +311,6 @@ async function startCall(callType) {
         ephemeralKey = sessionData.client_secret.value;
         console.log('Received OpenAI Session ID:', openaiSessionId);
         console.log('Received Ephemeral Key (Client Secret)');
-
-        // Determine instructions based on call type (needed for session.update)
-        instructions = "You are CallsToAction, a helpful voice assistant for addiction recovery check-ins. Be empathetic, supportive, and guide the user through their check-in process. Keep responses relatively concise.";
-        if (callType === 'morning') {
-            instructions += " Focus on setting intentions and planning the day positively.";
-        } else if (callType === 'evening') {
-            instructions += " Focus on reflection, gratitude, and winding down.";
-        }
 
     } catch (error) {
         console.error('Error fetching OpenAI session token:', error);
@@ -297,7 +347,7 @@ async function startCall(callType) {
 
     // 4. Initiate WebRTC Connection
     try {
-        await connectOpenAIWebRTC(ephemeralKey, callType, instructions);
+        await connectOpenAIWebRTC(ephemeralKey, callType);
     } catch (error) {
          console.error('Error initiating WebRTC connection:', error);
          alert(`Failed to connect via WebRTC: ${error.message}`);
@@ -307,7 +357,7 @@ async function startCall(callType) {
 }
 
 // --- NEW Function to connect to OpenAI via WebRTC ---
-async function connectOpenAIWebRTC(ephemeralKey, callType, instructions) {
+async function connectOpenAIWebRTC(ephemeralKey, callType) {
     console.log("Initiating WebRTC connection...");
     callStatus.textContent = 'Setting up WebRTC...';
 
@@ -411,18 +461,10 @@ async function connectOpenAIWebRTC(ephemeralKey, callType, instructions) {
 
     dataChannel.onopen = () => {
         console.log("Data Channel 'oai-events' opened.");
-        // Send session.update with instructions as per docs example
-        if (instructions) {
-            const event = {
-                type: "session.update",
-                session: {
-                    instructions: instructions
-                }
-            };
-            sendDataChannelMessage(event);
-        } else {
-             console.warn("Instructions not available to send session.update");
-        }
+        // NO LONGER sending session.update here, instructions sent at session creation
+        // const event = { type: "session.update", session: { instructions: instructions } };
+        // sendDataChannelMessage(event);
+
         // Directly set status now
         callStatus.textContent = `${callType} call ready. Speak now...`;
     };
@@ -693,4 +735,90 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error('Stop call button not found! Cannot attach listener.');
     }
+
+    // Add listener for the profile save button
+    if (saveProfileButton) {
+        saveProfileButton.addEventListener('click', saveUserProfile);
+        console.log("Profile save button listener attached.");
+    } else {
+         console.error('Save profile button not found!');
+    }
 });
+
+// --- NEW: Function to load user profile ---
+async function loadUserProfile() {
+    if (!currentUser) return;
+
+    console.log("Loading user profile...");
+    profileStatus.textContent = 'Loading profile...';
+    try {
+        const { data, error, status } = await _supabase
+            .from('profiles')
+            .select(`sobriety_date`)
+            .eq('user_id', currentUser.id)
+            .maybeSingle(); // Use maybeSingle() in case profile doesn't exist yet
+
+        if (error && status !== 406) { // 406 means no rows found, which is okay with maybeSingle()
+            throw error;
+        }
+
+        if (data) {
+            console.log("Profile data received:", data);
+            userProfile = data; // Store profile data
+            if (data.sobriety_date && sobrietyDateInput) {
+                sobrietyDateInput.value = data.sobriety_date; // Set input value
+                profileStatus.textContent = 'Profile loaded.';
+            } else {
+                 profileStatus.textContent = 'Set your recovery start date.';
+            }
+        } else {
+            console.log("No profile found for user.");
+            userProfile = null;
+             profileStatus.textContent = 'Set your recovery start date.';
+        }
+    } catch (error) {
+        console.error('Error loading user profile:', error);
+        profileStatus.textContent = 'Error loading profile.';
+        userProfile = null;
+    }
+}
+
+// --- NEW: Function to save user profile ---
+async function saveUserProfile() {
+    if (!currentUser || !sobrietyDateInput) return;
+
+    const sobrietyDate = sobrietyDateInput.value;
+    // Basic validation: Check if it's a valid date string
+    if (!sobrietyDate || isNaN(new Date(sobrietyDate))) {
+        profileStatus.textContent = 'Please enter a valid date.';
+        return;
+    }
+
+    console.log(`Saving sobriety date: ${sobrietyDate} for user: ${currentUser.id}`);
+    profileStatus.textContent = 'Saving...';
+
+    try {
+        const { error } = await _supabase
+            .from('profiles')
+            .upsert({ 
+                user_id: currentUser.id, // Link to the logged-in user
+                sobriety_date: sobrietyDate,
+                updated_at: new Date() // Explicitly set updated_at on upsert
+             }, {
+                onConflict: 'user_id' // If profile with user_id exists, update it
+             });
+
+        if (error) {
+            throw error;
+        }
+
+        console.log("Profile saved successfully.");
+        profileStatus.textContent = 'Date saved successfully!';
+        // Optionally reload profile data immediately
+        await loadUserProfile(); 
+
+    } catch (error) {
+        console.error('Error saving user profile:', error);
+        profileStatus.textContent = 'Error saving date.';
+    }
+}

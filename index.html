@@ -26,6 +26,19 @@
 
     <div id="journal-section" style="display: none;"> <!-- Hide initially until logged in -->
         <h2>Past Journal Entries</h2>
+
+        <!-- Sobriety Date Input -->
+        <div class="profile-section">
+            <h3>Your Profile</h3>
+            <label for="sobriety-date">Recovery Start Date:</label>
+            <input type="date" id="sobriety-date" name="sobriety-date">
+            <button id="save-profile-button">Save Date</button>
+            <p id="profile-status" style="margin-top: 5px;"></p> 
+        </div>
+        <!-- End Sobriety Date Input -->
+
+        <hr style="margin: 20px 0;">
+
         <div id="journal-entries"></div> <!-- Entries will be loaded here -->
     </div>
 
