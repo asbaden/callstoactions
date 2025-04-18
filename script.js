@@ -183,6 +183,11 @@ let dataChannel = null;
 let remoteAudioElement = null; // To play back audio from OpenAI
 let assistantTranscript = ""; // Variable to accumulate AI transcript
 
+// Variables for transcript logging
+let currentCallType = null; 
+let currentCallTranscript = "";
+let currentJournalEntryId = null;
+
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
 // Base URL for WebRTC SDP exchange
@@ -192,6 +197,12 @@ const OPENAI_REALTIME_MODEL = 'gpt-4o-realtime-preview';
 
 
 async function startCall(callType) {
+    // --- Store call type and reset transcript ---
+    currentCallType = callType;
+    currentCallTranscript = "";
+    currentJournalEntryId = null;
+    // --- End reset ---
+
     if (!currentUser) {
         alert('Please log in first.');
         return;
@@ -354,6 +365,41 @@ async function startCall(callType) {
          callStatus.textContent = 'WebRTC Connection Error.';
          await stopCall(); // Ensure cleanup on failure
     }
+
+    // --- Create Initial Journal Entry ---
+    try {
+        console.log("Creating initial journal entry...");
+        const { data: newEntry, error: insertError } = await _supabase
+            .from('journal_entries')
+            .insert({ 
+                user_id: currentUser.id,
+                call_type: currentCallType 
+                // Other fields like intentions, summary, transcript will be updated later
+            })
+            .select('id') // Select the ID of the newly created row
+            .single(); // Expect only one row back
+
+        if (insertError) {
+            throw insertError;
+        }
+
+        if (!newEntry || !newEntry.id) {
+            throw new Error("Failed to get ID for new journal entry.");
+        }
+
+        currentJournalEntryId = newEntry.id;
+        console.log(`Initial journal entry created with ID: ${currentJournalEntryId}`);
+
+    } catch (error) {
+         console.error('Error creating initial journal entry:', error);
+         alert(`Failed to create journal entry: ${error.message}\nCall cannot proceed.`);
+         callStatus.textContent = 'Journal entry error.';
+         if (stopCallBtn) stopCallBtn.style.display = 'none';
+         // Reset critical state if entry creation fails
+         currentCallType = null;
+         return; 
+    }
+    // --- End Create Initial Journal Entry ---
 }
 
 // --- NEW Function to connect to OpenAI via WebRTC ---
@@ -522,6 +568,8 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  case 'response.audio_transcript.delta':
                       // Accumulate the AI transcript delta
                       assistantTranscript += message.delta;
+                      // Also add to the full transcript log
+                      currentCallTranscript += message.delta; 
                       // Update UI with the accumulated transcript - REMOVED as requested
                       // callStatus.textContent = `Assistant: ${assistantTranscript}`;
                       break;
@@ -559,9 +607,12 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  case 'conversation.item.input_audio_transcription.completed':
                       // Just log these types for now to understand the flow
                       console.log(`Received Data Channel Event: ${message.type}`, message);
-                      // Display the final transcript
+                      // Append completed user transcript to log
                       if (message.transcript) {
-                          callStatus.textContent = `You said: "${message.transcript.trim()}"`;
+                         const userLine = `User: ${message.transcript.trim()}\n`;
+                         currentCallTranscript += userLine;
+                         // Display the final transcript (currently in callStatus)
+                         callStatus.textContent = userLine; // Overwrite status with latest user line
                       }
                       break;
                  default:
@@ -681,6 +732,9 @@ async function stopCall() { // Make async if needed for future cleanup steps
          callStatus.textContent = 'Call ended.';
     }
      console.log("stopCall cleanup finished.");
+
+    // Attempt to save transcript after cleanup
+    await saveTranscriptToJournal(); 
 }
 
 // Separate cleanup logic to be called by stopCall or onclose (REMOVED as stopCall handles it now)
@@ -821,4 +875,38 @@ async function saveUserProfile() {
         console.error('Error saving user profile:', error);
         profileStatus.textContent = 'Error saving date.';
     }
+}
+
+async function saveTranscriptToJournal() {
+    if (!currentJournalEntryId || !currentCallTranscript) {
+        console.log("No journal entry ID or transcript content to save.");
+        return;
+    }
+
+    console.log(`Saving transcript to journal entry ID: ${currentJournalEntryId}`);
+    try {
+        const { error } = await _supabase
+            .from('journal_entries')
+            .update({ 
+                full_transcript: currentCallTranscript.trim(),
+                // Optionally set an ended_at timestamp here if you add the column
+                // ended_at: new Date()
+             }) 
+            .eq('id', currentJournalEntryId)
+            .eq('user_id', currentUser.id); // Ensure user can only update their own
+
+        if (error) {
+            throw error;
+        }
+        console.log("Transcript saved successfully to journal entry.");
+        // Refresh journal entries displayed on the page
+        loadJournalEntries();
+
+    } catch(error) {
+        console.error("Error saving transcript to journal:", error);
+        // Inform user? Maybe just log for now.
+    }
+    // Reset after attempt
+    currentJournalEntryId = null;
+    currentCallTranscript = "";
 }
