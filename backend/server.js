@@ -83,7 +83,7 @@ app.post('/api/openai-session', async (req, res) => {
         let greeting = `Hello ${userName}.`;
 
         // Initial base instructions (same for both call types)
-        let baseInstructions = `You are CallsToAction, an empathetic AI voice assistant helping users with addiction recovery check-ins. Your tone should be supportive, non-judgmental, and encouraging. Keep conversational turns relatively concise. Start the call by greeting the user.`;
+        let baseInstructions = `You are CallsToAction, an empathetic AI voice assistant helping users with addiction recovery check-ins. Your tone should be supportive, non-judgmental, and encouraging. Keep conversational turns relatively concise. Try to complete your thoughts or statements within a single response block where possible, avoiding starting new responses abruptly with punctuation or short conjunctions. Start the call by greeting the user.`;
         let specificInstructions = "";
         let tenthStepQuestions = [
             "Where have we been selfish, dishonest, self-seeking or afraid?",
@@ -137,7 +137,7 @@ app.post('/api/openai-session', async (req, res) => {
         // --- End dynamic instructions ---
 
         // 2. Create OpenAI Realtime Session using node-fetch
-        console.log("Requesting OpenAI Realtime session with updated instructions...");
+        console.log("Requesting OpenAI Realtime session with updated instructions using gpt-4o-mini-realtime-preview...");
         const openaiSessionUrl = 'https://api.openai.com/v1/realtime/sessions';
         const openaiResponse = await fetch(openaiSessionUrl, {
             method: 'POST',
@@ -146,7 +146,7 @@ app.post('/api/openai-session', async (req, res) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "gpt-4o-realtime-preview",
+                model: "gpt-4o-mini-realtime-preview",
                 modalities: ["audio", "text"],
                 instructions: finalInstructions,
                 voice: "echo",
@@ -176,12 +176,6 @@ app.post('/api/openai-session', async (req, res) => {
 
         const sessionData = JSON.parse(responseBody); // Parse successful response
         console.log("OpenAI session created successfully:", sessionData.id);
-        // Also log the client secret value for debugging/testing
-        if (sessionData.client_secret && sessionData.client_secret.value) {
-             console.log("Client Secret Value:", sessionData.client_secret.value);
-        } else {
-             console.warn("Client secret structure unexpected or missing in OpenAI response:", sessionData.client_secret);
-        }
 
         // 3. Return necessary data to the client
         res.json({ 
@@ -288,8 +282,8 @@ app.post('/api/generate-action-items', async (req, res) => {
         const transcript = entryData.full_transcript;
         console.log(`Transcript fetched successfully (length: ${transcript.length})`);
 
-        // 3. Call OpenAI API (GPT-4.1 nano) to extract action items
-        console.log("Calling OpenAI (gpt-4-1106-preview) to extract action items..."); // Using gpt-4-turbo-preview temporarily
+        // 3. Call OpenAI API to extract action items
+        console.log("Calling OpenAI (gpt-4o-mini) to extract action items...");
         const prompt = `Analyze the following conversation transcript between a user ("Me:") and an AI assistant ("Actions:"). Extract a list of specific, actionable tasks or commitments the user mentioned they would do. Focus only on concrete actions the user intends to take. Format the output as a JSON array of strings. If no specific actions are mentioned, return an empty array [].
 
 Transcript:
@@ -301,13 +295,13 @@ JSON Array of Actions:`;
 
         try {
             const completion = await openai.chat.completions.create({
-                model: "gpt-4-turbo-preview", // Use gpt-4-1106-preview or similar if nano isn't available/working yet
+                model: "gpt-4o-mini",
                 messages: [
                     { role: "system", content: "You are an assistant that extracts actionable tasks from transcripts and outputs them as a JSON array." },
                     { role: "user", content: prompt }
                 ],
-                response_format: { type: "json_object" }, // Ensure JSON output
-                temperature: 0.2, // Lower temperature for more deterministic output
+                response_format: { type: "json_object" },
+                temperature: 0.2,
             });
 
             let actionItems = [];

@@ -773,10 +773,9 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                  
                  // --- Handle AI speech delta ---
                  case 'response.audio_transcript.delta':
-                      // --- MODIFIED Check: Only append if same response AND last speaker was AI ---
+                      // --- REVISED Check: Only append if same response ID and we have a div for it ---
                       if (message.response_id && 
                           message.response_id === currentAiResponseId && 
-                          lastSpeaker === 'Actions' && 
                           currentAssistantTurnDiv) 
                       {
                            // --- Continuation: Append text to the existing AI bubble ---
@@ -785,7 +784,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                            currentAssistantTurnDiv.textContent = assistantTranscript; // Update existing span
                       } else {
                            // --- Start of a *new* visual AI bubble ---
-                           // (Could be a new response_id OR the first delta after a "Me" bubble)
+                           // (Must be a new response_id OR first delta after response.done/error)
                            
                            // 1. Finalize previous turn in raw log (if needed)
                            if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
@@ -801,7 +800,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                            // 3. Reset display accumulator and update tracking variables
                            assistantTranscript = message.delta;
                            currentAiResponseId = message.response_id; // Track this response ID
-                           lastSpeaker = 'Actions';
+                           lastSpeaker = 'Actions'; // Set speaker for the bubble just added
 
                            // 4. Add prefix and text to raw log for this new turn
                            // Decide if prefix is needed based on whether it's truly a new response_id?
