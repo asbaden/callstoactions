@@ -75,36 +75,69 @@ app.post('/api/openai-session', async (req, res) => {
         console.log(`Authenticated user: ${user.email}`);
 
         // Extract data sent from the client
-        const { call_type, user_name, days_sober } = req.body;
+        const { call_type, user_name, days_sober, morning_tasks } = req.body;
+        console.log("Received request body:", req.body); // Log received data
 
         // --- Construct dynamic instructions ---
         let userName = user_name || "there"; // Fallback name
         let greeting = `Hello ${userName}.`;
 
-        // Add sobriety congratulations for morning calls if data is valid
-        if (call_type === 'morning' && typeof days_sober === 'number' && days_sober >= 0) {
-            // Handle pluralization correctly
-            const dayWord = days_sober === 1 ? "day" : "days";
-             greeting += ` Congratulations on ${days_sober} ${dayWord} of recovery!`;
-        }
-
+        // Initial base instructions (same for both call types)
         let baseInstructions = `You are CallsToAction, an empathetic AI voice assistant helping users with addiction recovery check-ins. Your tone should be supportive, non-judgmental, and encouraging. Keep conversational turns relatively concise. Start the call by greeting the user.`;
         let specificInstructions = "";
+        let tenthStepQuestions = [
+            "Where have we been selfish, dishonest, self-seeking or afraid?",
+            "Do we owe an apology?",
+            "Have we kept something to ourselves that should be discussed with another person at once?",
+            "Were we kind and loving toward all?",
+            "What could we have done better?",
+            "Were we thinking of ourselves most of the time?",
+            "Or were we thinking of what we could do for others, of what we could pack into the stream of life?"
+        ];
 
         if (call_type === 'morning') {
+            // Add sobriety congratulations for morning calls if data is valid
+            if (typeof days_sober === 'number' && days_sober >= 0) {
+                const dayWord = days_sober === 1 ? "day" : "days";
+                 greeting += ` Congratulations on ${days_sober} ${dayWord} of recovery!`;
+            }
             specificInstructions = " This is a morning check-in. Guide the user to set positive intentions and briefly plan their day with recovery in mind.";
+        
         } else if (call_type === 'evening') {
-            specificInstructions = " This is an evening check-in. Guide the user to reflect on their day, focusing on challenges, successes, and gratitude related to their recovery.";
-            // TODO: Later, add logic here to incorporate recalled intentions if sent from client
+            greeting = `Good evening ${userName}.`; // Evening greeting
+            specificInstructions = " This is an evening check-in.";
+            
+            // Check if valid morning tasks were provided
+            if (morning_tasks && Array.isArray(morning_tasks) && morning_tasks.length > 0) {
+                // Format tasks into a readable list string
+                const taskListString = morning_tasks.map(task => `- ${task}`).join('\n');
+                specificInstructions += ` Let's review your goals from this morning:\n${taskListString}\nHow did you do with these tasks today?`;
+                specificInstructions += " After discussing the tasks, let's move into a 10th Step inventory.";
+            } else {
+                specificInstructions += " Let's begin with a 10th Step inventory.";
+            }
+            // Add the 10th step guidance
+            specificInstructions += " Please reflect on the following questions. I will ask them one by one:";
+            // Add the questions themselves for the AI to reference/ask
+            tenthStepQuestions.forEach((q, index) => {
+                 specificInstructions += `\n${index + 1}. ${q}`;
+            });
+            specificInstructions += "\nTake your time to reflect after each question.";
+
+        } else {
+             // Handle unexpected call_type if necessary
+             console.warn(`Unexpected call_type received: ${call_type}`);
+             // Default to a generic instruction or return an error?
+             specificInstructions = " Please state the purpose of your call.";
         }
 
         // Combine instructions
         const finalInstructions = `${baseInstructions} Your first sentence should be: "${greeting}". ${specificInstructions}`;
-        console.log("Generated Instructions:", finalInstructions); // Log for debugging
+        console.log("Generated Final Instructions:", finalInstructions);
         // --- End dynamic instructions ---
 
         // 2. Create OpenAI Realtime Session using node-fetch
-        console.log("Requesting OpenAI Realtime session...");
+        console.log("Requesting OpenAI Realtime session with updated instructions...");
         const openaiSessionUrl = 'https://api.openai.com/v1/realtime/sessions';
         const openaiResponse = await fetch(openaiSessionUrl, {
             method: 'POST',
