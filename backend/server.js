@@ -304,6 +304,14 @@ JSON Array of Actions:`;
                 temperature: 0.2,
             });
 
+            // --- Log Token Usage ---
+            if (completion.usage) {
+                console.log("Action Item Generation Token Usage:", completion.usage); 
+            } else {
+                console.log("Action Item Generation: Usage data not found in completion response.");
+            }
+            // --- End Log Token Usage ---
+
             let actionItems = [];
             const responseContent = completion.choices[0]?.message?.content;
             if (responseContent) {
