@@ -205,7 +205,7 @@ app.post('/api/create-realtime-session', async (req, res) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "gpt-4o-realtime-preview",
+                model: "gpt-4o-mini-realtime-preview",
                 modalities: ["audio", "text"],
                 voice: "echo",
                 input_audio_format: "pcm16",
