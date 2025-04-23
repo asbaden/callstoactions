@@ -299,6 +299,7 @@ let currentJournalEntryId = null;
 let lastSpeaker = null; // Track last speaker for formatting ('Me', 'Actions', null)
 let currentAssistantTurnDiv = null; // Keep track of the current div for AI delta updates
 let currentUserTurnDiv = null; // Keep track of the current div for user delta updates (if needed)
+let waitingForUserResponse = false; // NEW: Flag to track when AI has asked a question and waiting for user
 
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
@@ -355,7 +356,7 @@ async function startCall(callType) {
                 .gte('created_at', todayStart.toISOString()) // Entries from today onwards
                 .order('created_at', { ascending: false }) // Get the latest one today
                 .limit(1)
-                .maybeSingle(); // Get one or null
+                .maybeSingle();
             
             if (morningError) {
                 console.error("Error fetching morning entry:", morningError);
@@ -771,6 +772,34 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                      console.log('OpenAI session confirmed via Data Channel (or inferred):', message);
                      break;
                  
+                 // --- Handle User speech completion ---
+                 case 'conversation.item.input_audio_transcription.completed':
+                      console.log(`Received Data Channel Event: ${message.type}`, message);
+                      if (message.transcript) {
+                          const userText = message.transcript.trim();
+                          
+                          // Add user turn bubble to display (always show in UI)
+                          addTurnDiv("Me", userText);
+                          
+                          // Process ALL user messages
+                          // 1. Finalize previous turn in raw log (if needed)
+                          if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
+                              currentCallTranscript += '\n';
+                          } // No newline needed if last was 'Me'
+                          
+                          // 2. Append user transcript to raw log (WITH prefix and newline)
+                          currentCallTranscript += `Me: ${userText}\n`; 
+                          
+                          // 3. Reset AI response tracking and response waiting flag
+                          currentAiResponseId = null;
+                          assistantTranscript = "";
+                          currentAssistantTurnDiv = null;
+                          waitingForUserResponse = false; // Reset the waiting flag when user speaks
+                          
+                          lastSpeaker = 'Me';
+                      }
+                      break;
+
                  // --- Handle AI speech delta ---
                  case 'response.audio_transcript.delta':
                       // --- REVISED Check: Only append if same response ID and we have a div for it ---
@@ -803,37 +832,18 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                            lastSpeaker = 'Actions'; // Set speaker for the bubble just added
 
                            // 4. Add prefix and text to raw log for this new turn
-                           // Decide if prefix is needed based on whether it's truly a new response_id?
-                           // For now, add prefix whenever creating a new visual bubble for simplicity.
-                           // We only add the *prefix* here if it's genuinely the start of the logged turn.
-                           // Check if the log *doesn't* already end with the start of this message.
-                           // A bit complex, let's simplify: Just add the text, prefix was handled conceptually.
-                           const prefix = currentCallTranscript.endsWith('\n') ? "Actions: " : "";
-                           currentCallTranscript += prefix + message.delta;
-                      }
-                      break;
-
-                 // --- Handle User speech completion ---
-                 case 'conversation.item.input_audio_transcription.completed':
-                      console.log(`Received Data Channel Event: ${message.type}`, message);
-                      if (message.transcript) {
-                          const userText = message.transcript.trim();
-                          // 1. Finalize previous turn in raw log (if needed)
-                           if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
+                           // Ensure we start a new line with proper prefix for transcript clarity
+                           if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
                                currentCallTranscript += '\n';
-                           } // No newline needed if last was 'Me'
+                           }
+                           // Always add the Actions prefix for a new AI response
+                           currentCallTranscript += `Actions: ${message.delta}`;
                            
-                          // 2. Append user transcript to raw log (WITH prefix and newline)
-                          currentCallTranscript += `Me: ${userText}\n`; 
-                          
-                          // 3. Add user turn bubble to display 
-                          addTurnDiv("Me", userText);
-                          lastSpeaker = 'Me';
-
-                          // 4. Clear AI display accumulator (ready for next AI turn)
-                          assistantTranscript = ""; 
-                          currentAssistantTurnDiv = null; 
-                          // DO NOT reset currentAiResponseId here
+                           // 5. Set waiting flag if the AI text appears to be asking a question (heuristic)
+                           if (message.delta.includes('?')) {
+                               waitingForUserResponse = true;
+                               console.log("AI asked a question, waiting for user response...");
+                           }
                       }
                       break;
 
@@ -845,10 +855,21 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                            if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
                                 currentCallTranscript += '\n';
                            }
-                           // Reset tracking for the *next* potential AI response
-                           currentAiResponseId = null; 
-                           assistantTranscript = ""; 
-                           currentAssistantTurnDiv = null;
+                           
+                           // Only fully clear AI response tracking if not waiting for user response
+                           // This prevents splitting AI utterances that form a logical turn
+                           if (!waitingForUserResponse) {
+                               currentAiResponseId = null; 
+                               assistantTranscript = ""; 
+                               currentAssistantTurnDiv = null;
+                           } else {
+                               console.log("Keeping response context as waiting for user input");
+                           }
+                           
+                           // Make sure the transcript format is clean
+                           if (!currentCallTranscript.endsWith('\n\n') && !currentCallTranscript.endsWith('\n')) {
+                               currentCallTranscript += '\n';
+                           }
                       }
                       // Log full response object if present
                       if (message.response) {
