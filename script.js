@@ -1547,424 +1547,95 @@ async function saveUserProfile() {
 
 // --- ATTACH EVENT LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded. Initializing app...');
-    
-    // --- DOM Element References ---
-    // Main UI sections
-    const loginButton = document.getElementById('login-button');
-    const logoutButton = document.getElementById('logout-button');
-    const authSection = document.getElementById('auth-section');
-    const mainContent = document.getElementById('main-content');
-    const morningView = document.getElementById('morning-view');
-    const eveningView = document.getElementById('evening-view');
-    const journalView = document.getElementById('journal-view');
-    const profileView = document.getElementById('profile-view');
-    const callInProgress = document.getElementById('call-in-progress');
-    const callStatus = document.getElementById('call-status');
-    const journalEntriesContainer = document.getElementById('journal-entries');
+  console.log('DOM fully loaded. EMERGENCY DEBUG MODE...');
 
-    // Header elements
-    const daysCount = document.getElementById('days-count');
-    const recoveryDaysCount = document.getElementById('recovery-days-count');
-    const recoveryDaysCountEvening = document.getElementById('recovery-days-count-evening');
-    const editDaysBtn = document.getElementById('edit-days-btn');
-    const historyBtn = document.getElementById('history-btn');
-    const settingsBtn = document.getElementById('settings-btn');
+  // Dump all buttons to the console for debugging
+  console.log('ALL BUTTONS:', document.querySelectorAll('button'));
+  
+  // Add direct onclick attributes to buttons as an emergency fallback
+  const morningCallBtn = document.getElementById('morning-call-button');
+  if (morningCallBtn) {
+    console.log('FOUND morning-call-button:', morningCallBtn);
+    morningCallBtn.setAttribute('onclick', "console.log('Morning call button clicked via onclick'); startCall('morning');");
+  } else {
+    console.error('morning-call-button NOT FOUND');
+  }
 
-    // View switching buttons
-    const switchToEveningBtn = document.getElementById('switch-to-evening');
-    const switchToMorningBtn = document.getElementById('switch-to-morning');
+  const eveningCallBtn = document.getElementById('evening-call-button');
+  if (eveningCallBtn) {
+    console.log('FOUND evening-call-button:', eveningCallBtn);
+    eveningCallBtn.setAttribute('onclick', "console.log('Evening call button clicked via onclick'); startCall('evening');");
+  } else {
+    console.error('evening-call-button NOT FOUND');
+  }
 
-    // Call buttons
-    const morningCallBtn = document.getElementById('morning-call-button');
-    const eveningCallBtn = document.getElementById('evening-call-button');
-    const stopCallBtn = document.getElementById('stop-call-button');
+  const switchToEveningBtn = document.getElementById('switch-to-evening');
+  if (switchToEveningBtn) {
+    console.log('FOUND switch-to-evening:', switchToEveningBtn);
+    switchToEveningBtn.setAttribute('onclick', "console.log('Switch to evening clicked via onclick'); document.getElementById('evening-view').style.display='block'; document.getElementById('morning-view').style.display='none';");
+  } else {
+    console.error('switch-to-evening NOT FOUND');
+  }
 
-    // Profile elements
-    const sobrietyDateInput = document.getElementById('sobriety-date');
-    const saveProfileButton = document.getElementById('save-profile-button');
-    const profileStatus = document.getElementById('profile-status');
-    
-    // Action Items
-    const newActionInput = document.getElementById('new-action-input');
-    const addActionBtn = document.getElementById('add-action-btn');
-    const todayActionList = document.getElementById('today-action-items');
-    
-    // Log the state of some key elements for debugging
-    console.log('UI Elements:', {
-        switchToEveningBtn: !!switchToEveningBtn,
-        switchToMorningBtn: !!switchToMorningBtn,
-        morningCallBtn: !!morningCallBtn,
-        eveningCallBtn: !!eveningCallBtn,
-        historyBtn: !!historyBtn
-    });
-    
-    // --- View Switching Functions ---
-    function showMorningView() {
-        console.log('Showing morning view');
-        if (!morningView) return console.error('Morning view element not found');
-        
-        morningView.style.display = 'block';
-        if (eveningView) eveningView.style.display = 'none';
-        if (journalView) journalView.style.display = 'none';
-        if (profileView) profileView.style.display = 'none';
-        if (callInProgress) callInProgress.style.display = 'none';
-    }
+  const switchToMorningBtn = document.getElementById('switch-to-morning');
+  if (switchToMorningBtn) {
+    console.log('FOUND switch-to-morning:', switchToMorningBtn);
+    switchToMorningBtn.setAttribute('onclick', "console.log('Switch to morning clicked via onclick'); document.getElementById('morning-view').style.display='block'; document.getElementById('evening-view').style.display='none';");
+  } else {
+    console.error('switch-to-morning NOT FOUND');
+  }
 
-    function showEveningView() {
-        console.log('Showing evening view');
-        if (!eveningView) return console.error('Evening view element not found');
-        
-        if (morningView) morningView.style.display = 'none';
-        eveningView.style.display = 'block';
-        if (journalView) journalView.style.display = 'none';
-        if (profileView) profileView.style.display = 'none';
-        if (callInProgress) callInProgress.style.display = 'none';
-    }
+  const historyBtn = document.getElementById('history-btn');
+  if (historyBtn) {
+    console.log('FOUND history-btn:', historyBtn);
+    historyBtn.setAttribute('onclick', "console.log('History button clicked via onclick'); document.getElementById('journal-view').style.display='block'; document.getElementById('morning-view').style.display='none'; document.getElementById('evening-view').style.display='none';");
+  } else {
+    console.error('history-btn NOT FOUND');
+  }
 
-    function showJournalView() {
-        console.log('Showing journal view');
-        if (!journalView) return console.error('Journal view element not found');
-        
-        if (morningView) morningView.style.display = 'none';
-        if (eveningView) eveningView.style.display = 'none';
-        journalView.style.display = 'block';
-        if (profileView) profileView.style.display = 'none';
-        if (callInProgress) callInProgress.style.display = 'none';
-        
-        // Load entries when switching to journal view
-        loadJournalEntries();
-    }
-
-    function showProfileView() {
-        console.log('Showing profile view');
-        if (!profileView) return console.error('Profile view element not found');
-        
-        if (morningView) morningView.style.display = 'none';
-        if (eveningView) eveningView.style.display = 'none';
-        if (journalView) journalView.style.display = 'none';
-        profileView.style.display = 'block';
-        if (callInProgress) callInProgress.style.display = 'none';
-    }
-
-    function showCallInProgress() {
-        console.log('Showing call in progress view');
-        if (!callInProgress) return console.error('Call in progress view element not found');
-        
-        if (morningView) morningView.style.display = 'none';
-        if (eveningView) eveningView.style.display = 'none';
-        if (journalView) journalView.style.display = 'none';
-        if (profileView) profileView.style.display = 'none';
-        callInProgress.style.display = 'block';
-    }
+  console.log('Emergency fallbacks added');
+  
+  // Basic UI function
+  const authSection = document.getElementById('auth-section');
+  const mainContent = document.getElementById('main-content');
+  
+  function updateUIBasic(user) {
+    console.log('Basic updateUI called with user:', user?.email);
+    currentUser = user;
     
-    // --- View Button Event Listeners ---
-    if (switchToEveningBtn) {
-        switchToEveningBtn.addEventListener('click', () => {
-            console.log('Switch to evening button clicked');
-            showEveningView();
-        });
-    } else {
-        console.error('Switch to evening button element not found');
-    }
-    
-    if (switchToMorningBtn) {
-        switchToMorningBtn.addEventListener('click', () => {
-            console.log('Switch to morning button clicked');
-            showMorningView();
-        });
-    } else {
-        console.error('Switch to morning button element not found');
-    }
-    
-    if (historyBtn) {
-        historyBtn.addEventListener('click', () => {
-            console.log('History button clicked');
-            showJournalView();
-        });
-    } else {
-        console.error('History button element not found');
-    }
-    
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', () => {
-            console.log('Settings button clicked');
-            showProfileView();
-        });
-    }
-    
-    if (editDaysBtn) {
-        editDaysBtn.addEventListener('click', () => {
-            console.log('Edit days button clicked');
-            showProfileView();
-        });
-    }
-    
-    // --- Call Button Event Listeners ---
-    if (morningCallBtn) {
-        morningCallBtn.addEventListener('click', () => {
-            console.log('Morning Call Button Clicked');
-            startCall('morning');
-        });
-    } else {
-        console.error('Morning call button element not found');
-    }
-    
-    if (eveningCallBtn) {
-        eveningCallBtn.addEventListener('click', () => {
-            console.log('Evening Call Button Clicked');
-            startCall('evening');
-        });
-    } else {
-        console.error('Evening call button element not found');
-    }
-    
-    if (stopCallBtn) {
-        stopCallBtn.addEventListener('click', () => {
-            console.log('Stop Call Button Clicked');
-            stopCall();
-            // After call ends, return to appropriate view based on call type
-            setTimeout(() => {
-                if (currentCallType === 'morning') {
-                    showMorningView();
-                } else {
-                    showEveningView();
-                }
-            }, 500);
-        });
-    }
-    
-    // --- Profile Button Event Listeners ---
-    if (saveProfileButton) {
-        saveProfileButton.addEventListener('click', () => {
-            console.log('Save profile button clicked');
-            saveUserProfile();
-        });
-    }
-    
-    // --- Action Items Event Listeners ---
-    if (addActionBtn && newActionInput) {
-        addActionBtn.addEventListener('click', () => {
-            console.log('Add action button clicked');
-            const text = newActionInput.value.trim();
-            if (text) {
-                addActionItem(text);
-                newActionInput.value = '';
-                newActionInput.focus();
-            }
-        });
-        
-        newActionInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const text = newActionInput.value.trim();
-                if (text) {
-                    addActionItem(text);
-                    newActionInput.value = '';
-                }
-            }
-        });
-    }
-    
-    // --- Override Global Functions ---
-    // These functions will now use the DOM elements from this closure
-    window.showMorningView = showMorningView;
-    window.showEveningView = showEveningView;
-    window.showJournalView = showJournalView;
-    window.showProfileView = showProfileView;
-    window.showCallInProgress = showCallInProgress;
-    
-    // --- Override updateUI to use our local DOM references ---
-    window.updateUI = function(user) {
-        console.log('UpdateUI called with user:', user?.email);
-        currentUser = user;
-        
-        try {
-            if (user) {
-                // User is logged in
-                if (authSection) authSection.style.display = 'none';
-                if (mainContent) mainContent.style.display = 'block';
-                showMorningView(); // Default to morning view
-                
-                // Load data after showing the view
-                setTimeout(() => {
-                    if (currentUser) { // Verify user is still logged in after timeout
-                        loadJournalEntries();
-                        loadUserProfile();
-                        loadActionItems();
-                        console.log('UI data loaded for user:', user.email);
-                    }
-                }, 100);
-            } else {
-                // User is logged out
-                if (authSection) authSection.style.display = 'block';
-                if (mainContent) mainContent.style.display = 'none';
-                if (sobrietyDateInput) sobrietyDateInput.value = '';
-                if (profileStatus) profileStatus.textContent = '';
-                if (journalEntriesContainer) journalEntriesContainer.innerHTML = '';
-                console.log('UI Updated: User logged out');
-            }
-        } catch (err) {
-            console.error('Error in updateUI:', err);
-        }
-    };
-    
-    // Fix for action items and DOM references
-    window.loadActionItems = function() {
-        const actionList = document.getElementById('today-action-items');
-        if (!actionList) {
-            console.log('Today action list element not found, skipping loadActionItems');
-            return;
-        }
-        
-        try {
-            // Clear the current list
-            actionList.innerHTML = '';
-            
-            // Get saved action items from local storage
-            const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
-            
-            // Display each item
-            savedItems.forEach(item => {
-                addActionItemToDOM(item.text, item.completed, actionList);
-            });
-            
-            // If we have action items from a completed morning call, add those too
-            updateActionItemsFromMorningCall(actionList);
-        } catch (error) {
-            console.error('Error loading action items:', error);
-        }
-    };
-    
-    window.addActionItemToDOM = function(text, completed, targetList) {
-        const actionList = targetList || document.getElementById('today-action-items');
-        if (!actionList) return;
-        
-        const li = document.createElement('li');
-        li.classList.add('action-item-row');
-        
-        const checkbox = document.createElement('div');
-        checkbox.classList.add('action-checkbox');
-        if (completed) {
-            checkbox.classList.add('checked');
-        }
-        
-        const itemText = document.createElement('span');
-        itemText.classList.add('action-text');
-        itemText.textContent = text;
-        if (completed) {
-            itemText.classList.add('completed');
-        }
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.classList.add('action-delete');
-        deleteBtn.innerHTML = '&times;';
-        
-        li.appendChild(checkbox);
-        li.appendChild(itemText);
-        li.appendChild(deleteBtn);
-        
-        actionList.appendChild(li);
-        
-        // Add event listeners
-        checkbox.addEventListener('click', () => {
-            toggleActionItem(li, text);
-        });
-        
-        deleteBtn.addEventListener('click', () => {
-            deleteActionItem(li, text);
-        });
-    };
-    
-    // --- Initialize Auth State ---
-    console.log('Checking initial authentication state...');
-    _supabase.auth.getUser().then(({ data: { user }, error }) => {
-        if (error) {
-            console.error('Error getting initial user:', error);
-            updateUI(null);
-        } else if (user) {
-            console.log('Initial user found:', user.email);
-            updateUI(user);
-        } else {
-            console.log('No initial user found');
-            updateUI(null);
-        }
-    }).catch(err => {
-        console.error('Exception during initial auth check:', err);
-        updateUI(null);
-    });
-    
-    console.log('App initialization complete');
-});
-
-// --- Journal Entry Event Listeners ---
-if (journalEntriesContainer) {
-  journalEntriesContainer.addEventListener('click', (event) => {
-    // Check if a journal entry or its header was clicked (but not action items or buttons)
-    const entryItem = event.target.closest('.journal-item');
-    const isActionItem = event.target.closest('.action-item');
-    const isDeleteButton = event.target.classList.contains('delete-entry-button');
-    
-    // Only toggle transcript if clicking on the entry (not a button or action item)
-    if (entryItem && !isActionItem && !isDeleteButton) {
-      const transcriptDiv = entryItem.querySelector('.journal-transcript');
-      if (transcriptDiv) {
-        // Toggle display
-        const isHidden = transcriptDiv.style.display === 'none';
-        transcriptDiv.style.display = isHidden ? 'flex' : 'none';
-        
-        // Toggle active class
-        if (isHidden) {
-          entryItem.classList.add('active');
-        } else {
-          entryItem.classList.remove('active');
-        }
-      }
-    }
-    
-    // Handle delete button clicks
-    if (isDeleteButton) {
-      const button = event.target;
-      const entryId = button.dataset.entryId;
+    if (user) {
+      if (authSection) authSection.style.display = 'none';
+      if (mainContent) mainContent.style.display = 'block';
+      console.log('UI Updated: User logged in');
       
-      if (!entryId) {
-        console.error("Delete button clicked but missing entry ID.");
-        return;
+      // Find and display morning view
+      const morningView = document.getElementById('morning-view');
+      if (morningView) {
+        morningView.style.display = 'block';
+        console.log('Morning view displayed');
       }
-
-      // --- Confirmation Dialog --- 
-      if (window.confirm("Are you sure you want to delete this journal entry? This cannot be undone.")) {
-        console.log(`Attempting to delete journal entry ID: ${entryId}`);
-        button.disabled = true; // Disable button during deletion
-        button.textContent = 'Deleting...';
-
-        _supabase
-          .from('journal_entries')
-          .delete()
-          .eq('id', entryId)
-          .then(({ error: deleteError }) => {
-            if (deleteError) {
-              console.error(`Error deleting journal entry ID ${entryId}:`, deleteError);
-              alert(`Failed to delete entry: ${deleteError.message}`);
-              button.disabled = false; 
-              button.textContent = 'Delete';
-              return;
-            }
-
-            console.log(`Successfully deleted entry ID: ${entryId}`);
-            const entryElementToRemove = button.closest('.journal-item');
-            if (entryElementToRemove) {
-              entryElementToRemove.remove();
-            } else {
-              loadJournalEntries(); 
-            }
-          })
-          .catch(error => {
-            console.error(`Error deleting journal entry ID ${entryId}:`, error);
-            alert(`Failed to delete entry: ${error.message}`);
-            button.disabled = false; 
-            button.textContent = 'Delete';
-          });
-      }
+    } else {
+      if (authSection) authSection.style.display = 'block';
+      if (mainContent) mainContent.style.display = 'none';
+      console.log('UI Updated: User logged out');
+    }
+  }
+  
+  // Override updateUI
+  window.updateUI = updateUIBasic;
+  
+  // Check initial auth state
+  console.log('Checking initial auth state...');
+  _supabase.auth.getUser().then(({ data: { user }, error }) => {
+    if (error) {
+      console.error('Error getting initial user:', error);
+      updateUIBasic(null);
+    } else if (user) {
+      console.log('Initial user found:', user.email);
+      updateUIBasic(user);
+    } else {
+      console.log('No initial user found');
+      updateUIBasic(null);
     }
   });
-}
+});
