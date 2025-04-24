@@ -3,48 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calls To Action - Accountability Buddy</title>
+    <title>Calls To Actions - Recovery Support</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
-    <h1>Calls To Actions</h1>
-    <p>Your AI Accountability Buddy for Recovery</p>
+    <header>
+        <div class="header-left">
+            <h1 class="app-title">Calls to Actions</h1>
+            <span class="recovery-tag">Recovery</span>
+        </div>
+        <div class="header-right">
+            <div class="sobriety-counter">
+                <span id="days-count">0 days</span>
+                <button id="edit-days-btn" class="button-text">Edit</button>
+            </div>
+            <button id="history-btn" class="button-text">History</button>
+            <button id="settings-btn" class="button-text">Settings</button>
+        </div>
+    </header>
 
     <div id="auth-section">
-        <!-- Authentication elements (e.g., login/signup buttons) will go here -->
-        <button id="login-button">Login / Sign Up</button> <!-- Simple placeholder -->
-        <button id="logout-button" style="display: none;">Logout</button>
-    </div>
-
-    <div id="call-controls" style="display: none;"> <!-- Hide initially until logged in -->
-        <h2>Daily Check-ins</h2>
-        <button id="morning-call-button">Start Morning Call</button>
-        <button id="evening-call-button">Start Evening Call</button>
-        <button id="stop-call-button" style="display: none;">End Call</button>
-        <div id="call-status"></div> <!-- To show connection status, transcription, etc. -->
-    </div>
-
-    <div id="journal-section" style="display: none;"> <!-- Hide initially until logged in -->
-        <h2>Past Journal Entries</h2>
-
-        <!-- Sobriety Date Input -->
-        <div class="profile-section">
-            <h3>Your Profile</h3>
-            <label for="sobriety-date">Recovery Start Date:</label>
-            <input type="date" id="sobriety-date" name="sobriety-date">
-            <button id="save-profile-button">Save Date</button>
-            <p id="profile-status" style="margin-top: 5px;"></p> 
+        <!-- Authentication elements -->
+        <div class="container">
+            <div class="card">
+                <h2>Welcome to Calls to Actions</h2>
+                <p>Your personal recovery support companion</p>
+                <button id="login-button" class="button button-primary">Login / Sign Up</button>
+                <button id="logout-button" class="button button-text" style="display: none;">Logout</button>
+            </div>
         </div>
-        <!-- End Sobriety Date Input -->
+    </div>
 
-        <hr style="margin: 20px 0;">
-
-        <div id="journal-entries"></div> <!-- Entries will be loaded here -->
+    <div id="main-content" style="display: none;">
+        <!-- Morning/Evening View - Only one visible at a time -->
+        <div id="morning-view" class="container">
+            <div class="card">
+                <h2 class="section-title">
+                    <span>Recovery Journey</span>
+                    <span class="section-subtitle" id="recovery-days-count">0 days</span>
+                </h2>
+                <p id="daily-mantra">This too shall pass.</p>
+                
+                <button id="switch-to-evening" class="switch-button">
+                    <span class="material-icons">nights_stay</span>
+                    Switch to Evening Check-in
+                </button>
+                
+                <!-- Today's Action Items Section -->
+                <div class="today-actions-section">
+                    <h3 class="section-title">
+                        <div class="icon">
+                            <span class="material-icons">assignment</span>
+                        </div>
+                        Today's Action Items
+                    </h3>
+                    
+                    <div class="action-input-container">
+                        <input type="text" id="new-action-input" placeholder="Add a new action item..." class="action-input">
+                        <button id="add-action-btn" class="action-add-btn">
+                            <span class="material-icons">add</span>
+                        </button>
+                    </div>
+                    
+                    <ul id="today-action-items" class="today-action-list">
+                        <!-- Action items will be added here dynamically -->
+                    </ul>
+                    
+                    <p class="evening-reminder">Come back this evening to reflect on your day and complete your 10th step.</p>
+                </div>
+                
+                <div class="session-card">
+                    <h3 class="section-title">
+                        <div class="icon icon-morning">
+                            <span class="material-icons">wb_sunny</span>
+                        </div>
+                        Morning Planning Session
+                    </h3>
+                    <p>Let's plan your day and set some positive intentions. Talk to the AI about what you want to accomplish today.</p>
+                    
+                    <div class="call-button-container">
+                        <button id="morning-call-button" class="button button-primary">
+                            <span class="material-icons button-icon">call</span>
+                            Start Morning Call
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="evening-view" class="container" style="display: none;">
+            <div class="card">
+                <h2 class="section-title">
+                    <span>Recovery Journey</span>
+                    <span class="section-subtitle" id="recovery-days-count-evening">0 days</span>
+                </h2>
+                <p id="evening-mantra">Let go and let God.</p>
+                
+                <button id="switch-to-morning" class="switch-button">
+                    <span class="material-icons">wb_sunny</span>
+                    Switch to Morning Planning
+                </button>
+                
+                <div class="session-card">
+                    <h3 class="section-title">
+                        <div class="icon icon-evening">
+                            <span class="material-icons">nights_stay</span>
+                        </div>
+                        Evening Reflection & 10th Step
+                    </h3>
+                    <p>Let's reflect on your day and go through your 10th step. Did you accomplish what you set out to do?</p>
+                    
+                    <div class="call-button-container">
+                        <button id="evening-call-button" class="button button-primary">
+                            <span class="material-icons button-icon">call</span>
+                            Start Evening Call
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Call in progress view -->
+        <div id="call-in-progress" class="container" style="display: none;">
+            <div class="card">
+                <div id="call-header" class="section-title">
+                    <button id="stop-call-button" class="button button-primary">
+                        <span class="material-icons button-icon">call_end</span>
+                        End Call
+                    </button>
+                </div>
+                <div id="call-status"></div>
+            </div>
+        </div>
+        
+        <!-- Journal View -->
+        <div id="journal-view" class="container" style="display: none;">
+            <div class="card">
+                <h2 class="section-title">
+                    <div class="icon">
+                        <span class="material-icons">book</span>
+                    </div>
+                    Recovery Journal
+                </h2>
+                <p>Your journey, one day at a time</p>
+                
+                <ul id="journal-entries" class="journal-list">
+                    <!-- Journal entries will be loaded here -->
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Profile/Settings View -->
+        <div id="profile-view" class="container" style="display: none;">
+            <div class="card">
+                <h2 class="section-title">Your Recovery Profile</h2>
+                
+                <div class="profile-section">
+                    <label for="sobriety-date">Recovery Start Date:</label>
+                    <input type="date" id="sobriety-date" name="sobriety-date">
+                    <button id="save-profile-button" class="button button-primary">Save Date</button>
+                    <p id="profile-status"></p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Load Supabase config first -->
     <script src="config.js"></script>
-    <!-- Load Supabase client library (we'll use the CDN for now) -->
+    <!-- Load Supabase client library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Load your main application script -->
     <script src="script.js"></script>

@@ -7,14 +7,35 @@ console.log('Supabase client instance:', _supabase);
 
 console.log('Supabase Initialized');
 
-// --- DOM Elements ---
+// --- Updated DOM Elements ---
 const loginButton = document.getElementById('login-button');
 const logoutButton = document.getElementById('logout-button');
 const authSection = document.getElementById('auth-section');
-const callControls = document.getElementById('call-controls');
-const journalSection = document.getElementById('journal-section');
+const mainContent = document.getElementById('main-content');
+const morningView = document.getElementById('morning-view');
+const eveningView = document.getElementById('evening-view');
+const journalView = document.getElementById('journal-view');
+const profileView = document.getElementById('profile-view');
+const callInProgress = document.getElementById('call-in-progress');
 const callStatus = document.getElementById('call-status');
-const journalEntriesDiv = document.getElementById('journal-entries');
+const journalEntriesContainer = document.getElementById('journal-entries');
+
+// Header elements
+const daysCount = document.getElementById('days-count');
+const recoveryDaysCount = document.getElementById('recovery-days-count');
+const recoveryDaysCountEvening = document.getElementById('recovery-days-count-evening');
+const editDaysBtn = document.getElementById('edit-days-btn');
+const historyBtn = document.getElementById('history-btn');
+const settingsBtn = document.getElementById('settings-btn');
+
+// View switching buttons
+const switchToEveningBtn = document.getElementById('switch-to-evening');
+const switchToMorningBtn = document.getElementById('switch-to-morning');
+
+// Call buttons
+const morningCallBtn = document.getElementById('morning-call-button');
+const eveningCallBtn = document.getElementById('evening-call-button');
+const stopCallBtn = document.getElementById('stop-call-button');
 
 // Profile elements
 const sobrietyDateInput = document.getElementById('sobriety-date');
@@ -33,30 +54,82 @@ console.log("Pre-created remote audio element.");
 // document.body.appendChild(remoteAudioElement);
 // --- End Audio Element Creation ---
 
-// Function to update UI based on authentication status
-const updateUI = (user) => {
-    currentUser = user;
-    if (user) {
-        // User is logged in
-        loginButton.style.display = 'none';
-        logoutButton.style.display = 'block';
-        callControls.style.display = 'block';
-        journalSection.style.display = 'block';
-        console.log('UI Updated: User logged in:', user.email);
-        loadJournalEntries();
-        loadUserProfile(); // Load profile data including sobriety date
-    } else {
-        // User is logged out
-        loginButton.style.display = 'block';
-        logoutButton.style.display = 'none';
-        callControls.style.display = 'none';
-        journalSection.style.display = 'none';
-        if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
-        if (profileStatus) profileStatus.textContent = ''; // Clear profile status
-        if (journalEntriesDiv) journalEntriesDiv.innerHTML = ''; // Clear entries
-        console.log('UI Updated: User logged out');
-    }
-};
+// --- View Switching Functions ---
+function showMorningView() {
+  morningView.style.display = 'block';
+  eveningView.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  callInProgress.style.display = 'none';
+}
+
+function showEveningView() {
+  morningView.style.display = 'none';
+  eveningView.style.display = 'block';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  callInProgress.style.display = 'none';
+}
+
+function showJournalView() {
+  morningView.style.display = 'none';
+  eveningView.style.display = 'none';
+  journalView.style.display = 'block';
+  profileView.style.display = 'none';
+  callInProgress.style.display = 'none';
+  loadJournalEntries();
+}
+
+function showProfileView() {
+  morningView.style.display = 'none';
+  eveningView.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'block';
+  callInProgress.style.display = 'none';
+}
+
+function showCallInProgress() {
+  morningView.style.display = 'none';
+  eveningView.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  callInProgress.style.display = 'block';
+}
+
+// --- Basic UI Function ---
+function updateUI(user) {
+  currentUser = user;
+  if (user) {
+    // User is logged in
+    authSection.style.display = 'none';
+    mainContent.style.display = 'block';
+    showMorningView(); // Default to morning view
+    loadJournalEntries();
+    loadUserProfile(); // Load profile data including sobriety date
+    console.log('UI Updated: User logged in:', user.email);
+  } else {
+    // User is logged out
+    authSection.style.display = 'block';
+    mainContent.style.display = 'none';
+    if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
+    if (profileStatus) profileStatus.textContent = ''; // Clear profile status
+    if (journalEntriesContainer) journalEntriesContainer.innerHTML = ''; // Clear entries
+    console.log('UI Updated: User logged out');
+  }
+}
+
+// --- Hook into UI functions ---
+// Add action items loading to updateUI
+const _originalUpdateUI = updateUI;
+function _extendedUpdateUI(user) {
+  _originalUpdateUI(user);
+  
+  // Load action items when UI is updated and user is logged in
+  if (user) {
+    loadActionItems();
+  }
+}
+updateUI = _extendedUpdateUI;
 
 // --- Initial Load and Auth Listener ---
 
@@ -120,129 +193,170 @@ logoutButton.addEventListener('click', async () => {
 async function loadJournalEntries() {
     if (!currentUser) {
         console.log('loadJournalEntries called, but no user logged in.');
-        journalEntriesDiv.innerHTML = ''; // Clear entries if user logs out
+        journalEntriesContainer.innerHTML = ''; // Clear entries if user logs out
         return;
     }
 
     console.log('Loading journal entries for user:', currentUser.id);
-    journalEntriesDiv.innerHTML = '<p>Loading entries...</p>'; // Show loading indicator
+    journalEntriesContainer.innerHTML = '<p>Loading entries...</p>'; // Show loading indicator
+
+    // Update the current date in the journal header
+    const currentJournalDate = document.getElementById('current-journal-date');
+    if (currentJournalDate) {
+        const today = new Date();
+        currentJournalDate.textContent = today.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+    }
 
     try {
         const { data: entries, error } = await _supabase
             .from('journal_entries')
-            // Select all columns INCLUDING the transcript AND the new action_items
-            .select('*, full_transcript, action_items') 
-            // .eq('user_id', currentUser.id) // RLS handles this, but explicit check is fine too
+            .select('*, full_transcript, action_items')
             .order('created_at', { ascending: false }); // Show newest first
 
         if (error) {
             console.error('Error fetching journal entries:', error);
-            journalEntriesDiv.innerHTML = '<p style="color: red;">Error loading entries.</p>';
+            journalEntriesContainer.innerHTML = '<p style="color: red;">Error loading entries.</p>';
             return;
         }
 
         if (!entries || entries.length === 0) {
-            journalEntriesDiv.innerHTML = '<p>No journal entries found.</p>';
+            journalEntriesContainer.innerHTML = '<p>No journal entries found.</p>';
             return;
         }
 
         // Clear loading message
-        journalEntriesDiv.innerHTML = '';
+        journalEntriesContainer.innerHTML = '';
 
-        // Display entries
+        // Group entries by date
+        const entriesByDate = {};
         entries.forEach(entry => {
-            const entryElement = document.createElement('div');
-            entryElement.classList.add('journal-entry');
-            entryElement.dataset.entryId = entry.id; // Store ID for potential future use
-
-            // Format date nicely
-            const date = new Date(entry.created_at).toLocaleString();
-
-            // --- Build Header and Initial Content ---
-            let headerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong class="journal-entry-header" style="cursor: pointer;">${date} - ${entry.call_type.toUpperCase()} (Click to view transcript)</strong>
-                    <button class="delete-entry-button" data-entry-id="${entry.id}" style="padding: 2px 5px; font-size: 0.8em; cursor: pointer;">Delete</button>
-                </div>
-                <br>
-            `;
+            const dateObj = new Date(entry.created_at);
+            const dateString = dateObj.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
             
-            let visibleContentHTML = headerHTML; // Start with header
-            if (entry.intention) visibleContentHTML += `<em>Intention:</em> ${entry.intention}<br>`;
-            // Keep displaying the raw action plan text for context if it exists
-            if (entry.action_plan) visibleContentHTML += `<em>Action Plan (Raw):</em> ${entry.action_plan}<br>`; 
-
-            // --- Add Action Items Checklist ---
-            if (entry.action_items && Array.isArray(entry.action_items) && entry.action_items.length > 0) {
-                visibleContentHTML += '<strong>Action Items:</strong><ul class="action-items-list">';
-                entry.action_items.forEach((item, index) => {
-                    // Note: Checkbox state is not saved currently
-                    visibleContentHTML += `<li><input type="checkbox" id="item-${entry.id}-${index}"> <label for="item-${entry.id}-${index}">${item}</label></li>`;
-                });
-                visibleContentHTML += '</ul>';
+            if (!entriesByDate[dateString]) {
+                entriesByDate[dateString] = [];
             }
-            // --- End Action Items Checklist ---
+            entriesByDate[dateString].push(entry);
+        });
 
-
-            // --- Format Transcript (Chat Bubbles) ---
-            let transcriptHTML = ''; // Declare once
-            if (entry.full_transcript) {
-                // --- NEW Simplified Formatting Logic ---
-                let formattedTranscript = "";
-                // Split by one or more newlines and filter out empty lines
-                const lines = entry.full_transcript.split(/\n+/).filter(line => line.trim() !== '');
-
-                lines.forEach(line => {
-                    const trimmedLine = line.trim(); // Trim each line
-                    let text = "";
-                    let alignmentClass = '';
-
-                    if (trimmedLine.startsWith("Me:")) {
-                        text = trimmedLine.substring(3).trim(); // Get text after prefix and trim
-                        alignmentClass = 'me-bubble';
-                    } else if (trimmedLine.startsWith("Actions:")) {
-                        text = trimmedLine.substring(8).trim(); // Get text after prefix and trim
-                        alignmentClass = 'actions-bubble';
-                    } else {
-                        // Fallback for unexpected lines (log and display as AI)
-                        console.warn("Found transcript line without expected prefix:", trimmedLine);
-                        text = trimmedLine; // Use the line as is
-                        alignmentClass = 'actions-bubble'; // Default to AI bubble
-                    }
-
-                    // Create a new bubble for each valid line
-                    if (alignmentClass && text) {
-                         formattedTranscript += `<div class="chat-bubble ${alignmentClass}">${text}</div>`;
-                    }
+        // Display entries grouped by date
+        Object.keys(entriesByDate).forEach(dateString => {
+            // Create a date container
+            const dateContainer = document.createElement('div');
+            dateContainer.classList.add('date-group');
+            
+            // Create date header
+            const dateHeader = document.createElement('h3');
+            dateHeader.classList.add('date-header');
+            dateHeader.textContent = dateString;
+            dateContainer.appendChild(dateHeader);
+            
+            // Create entry list for this date
+            const dateEntries = document.createElement('ul');
+            dateEntries.classList.add('journal-list');
+            
+            // Add entries for this date
+            entriesByDate[dateString].forEach(entry => {
+                const time = new Date(entry.created_at).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
                 });
-                // --- End Simplified Formatting Logic ---
+                
+                const entryElement = document.createElement('li');
+                entryElement.classList.add('journal-item');
+                entryElement.dataset.entryId = entry.id;
 
-                transcriptHTML = `
-                   <div class="journal-transcript" style="display: none;">
-                       <strong>Full Transcript:</strong><br>
-                       ${formattedTranscript}
-                   </div>
-               `;
-            } else {
-                 // Message if no transcript is saved
-                 transcriptHTML = `
-                    <div class="journal-transcript" style="display: none;">
-                        <p><em>No full transcript saved for this entry.</em></p>
+                // Determine icon based on call type
+                const iconType = entry.call_type === 'morning' ? 'wb_sunny' : 'nights_stay';
+                const iconClass = entry.call_type === 'morning' ? 'icon-morning' : 'icon-evening';
+                
+                // Create the journal entry with the new design
+                let entryHTML = `
+                    <div class="journal-header">
+                        <div class="journal-type">
+                            <div class="icon ${iconClass}">
+                                <span class="material-icons">${iconType}</span>
+                            </div>
+                            <span>${time} - ${entry.call_type.charAt(0).toUpperCase() + entry.call_type.slice(1)} Check-in</span>
+                        </div>
+                        <button class="delete-entry-button" data-entry-id="${entry.id}">Delete</button>
                     </div>
                 `;
-            }
-             // --- End Transcript Formatting ---
+                
+                // Add action items if available
+                if (entry.action_items && Array.isArray(entry.action_items) && entry.action_items.length > 0) {
+                    entryHTML += '<div class="action-items"><div class="action-items-title">Action items:</div>';
+                    
+                    entry.action_items.forEach(item => {
+                        entryHTML += `
+                            <div class="action-item">
+                                <span class="action-item-bullet">•</span>
+                                <span>${item}</span>
+                            </div>
+                        `;
+                    });
+                    
+                    entryHTML += '</div>';
+                }
 
+                // Add transcript section (hidden by default)
+                if (entry.full_transcript) {
+                    // Format transcript (similar to existing code)
+                    let formattedTranscript = "";
+                    const lines = entry.full_transcript.split(/\n+/).filter(line => line.trim() !== '');
 
-            // Set the combined HTML
-            entryElement.innerHTML = visibleContentHTML + transcriptHTML + '<hr>'; // Add a separator
+                    lines.forEach(line => {
+                        const trimmedLine = line.trim();
+                        let text = "";
+                        let alignmentClass = '';
 
-            journalEntriesDiv.appendChild(entryElement);
+                        if (trimmedLine.startsWith("Me:")) {
+                            text = trimmedLine.substring(3).trim();
+                            alignmentClass = 'me-bubble';
+                        } else if (trimmedLine.startsWith("Actions:")) {
+                            text = trimmedLine.substring(8).trim();
+                            alignmentClass = 'actions-bubble';
+                        } else {
+                            console.warn("Found transcript line without expected prefix:", trimmedLine);
+                            text = trimmedLine;
+                            alignmentClass = 'actions-bubble';
+                        }
+
+                        if (alignmentClass && text) {
+                            formattedTranscript += `<div class="chat-bubble ${alignmentClass}">${text}</div>`;
+                        }
+                    });
+
+                    entryHTML += `
+                        <div class="journal-transcript" style="display: none;">
+                            ${formattedTranscript || '<p><em>No transcript available</em></p>'}
+                        </div>
+                    `;
+                }
+
+                entryElement.innerHTML = entryHTML;
+                dateEntries.appendChild(entryElement);
+            });
+            
+            // Add the entries list to the date container
+            dateContainer.appendChild(dateEntries);
+            
+            // Add the date container to the journal entries container
+            journalEntriesContainer.appendChild(dateContainer);
         });
 
     } catch (err) {
         console.error('Unexpected error in loadJournalEntries:', err);
-        journalEntriesDiv.innerHTML = '<p style="color: red;">An unexpected error occurred.</p>';
+        journalEntriesContainer.innerHTML = '<p style="color: red;">An unexpected error occurred.</p>';
     }
 }
 
@@ -253,7 +367,6 @@ let mediaRecorder = null; // May be removed if WebRTC handles audio track direct
 let audioContext = null; // Still potentially needed for playback or resampling
 let audioQueue = []; // Likely removed, WebRTC uses tracks
 let isPlaying = false; // Likely removed
-let stopCallBtn = null; // Reference to stop call button
 let userStream = null; // Store the user's media stream
 let openaiSessionId = null; // Store the OpenAI session ID (Still potentially useful for context)
 // let outputAudioFormat = 'pcm16'; // Format handled by WebRTC negotiation
@@ -286,6 +399,9 @@ const OPENAI_REALTIME_MODEL = 'gpt-4o-realtime-preview';
 
 
 async function startCall(callType) {
+    // Show call-in-progress view
+    showCallInProgress();
+    
     // --- Store call type and reset transcript ---
     currentCallType = callType;
     currentCallTranscript = "";
@@ -352,11 +468,13 @@ async function startCall(callType) {
     // --- Create Initial Journal Entry ---
     try {
         console.log("Creating initial journal entry...");
+        const currentTimestamp = new Date().toISOString(); // Get current timestamp in ISO format
         const { data: newEntry, error: insertError } = await _supabase
             .from('journal_entries')
             .insert({ 
                 user_id: currentUser.id,
-                call_type: currentCallType 
+                call_type: currentCallType,
+                created_at: currentTimestamp // Explicitly set the current timestamp
                 // action_items will be null initially
             })
             .select('id')
@@ -1082,109 +1200,22 @@ function sendDataChannelMessage(messageObject) {
 
 // --- Update Stop Call function for WebRTC ---
 // Add an optional flag to indicate if this is just for cleanup
-async function stopCall(isCleanupOnly = false) { 
-    console.log(`stopCall() initiated. Is cleanup only: ${isCleanupOnly}`);
-
-    // Capture the ID before cleanup potentially triggers another stopCall or save clears it
-    const entryIdToSave = currentJournalEntryId;
-    // Only log if we *expect* to save later
-    if (!isCleanupOnly) {
-        console.log(`stopCall: Captured entry ID to potentially save: ${entryIdToSave}`);
-    }
-
-    // --- Perform Cleanup Actions First ---
-    if (peerConnection) {
-        console.log("Closing RTCPeerConnection...");
-        // Unsubscribe event listeners BEFORE closing to prevent race conditions/double calls
-        peerConnection.onconnectionstatechange = null;
-        peerConnection.onicecandidate = null;
-        peerConnection.ontrack = null;
-        peerConnection.onicegatheringstatechange = null;
-        peerConnection.onsignalingstatechange = null;
-        peerConnection.onerror = null;
-        if (dataChannel) {
-            dataChannel.onopen = null;
-            dataChannel.onclose = null;
-            dataChannel.onerror = null;
-            dataChannel.onmessage = null;
-            // dataChannel.close(); // Closing peerConnection should close the channel
-            dataChannel = null; 
-        }
-        peerConnection.close();
-        peerConnection = null;
-    }
-    // Double check dataChannel nullification if peerConnection wasn't open
-    if (dataChannel) {
-        // dataChannel.close(); // Already handled above if peerConnection existed
-        dataChannel = null;
-    }
+const _originalStopCall = stopCall;
+async function _extendedStopCall(isCleanupOnly = false) {
+  await _originalStopCall(isCleanupOnly);
+  
+  // After a call, check if we need to update action items
+  if (!isCleanupOnly && currentCallType === 'morning') {
+    // Reset the processed flag so we load fresh items
+    localStorage.removeItem('morningCallItemsProcessed');
     
-    if (userStream) {
-        console.log("Stopping media stream tracks.");
-        userStream.getTracks().forEach(track => track.stop());
-        userStream = null;
-    }
-    
-    if (remoteAudioElement && remoteAudioElement.parentNode) {
-        // Clean up dynamically added audio element if needed
-        // remoteAudioElement.parentNode.removeChild(remoteAudioElement);
-        // remoteAudioElement = null;
-    } else if (remoteAudioElement) {
-        // Pause and reset srcObject if element wasn't added to DOM or is reused
-         remoteAudioElement.pause();
-         remoteAudioElement.srcObject = null;
-    }
-
-    // Reset other state variables
-    openaiSessionId = null;
-    assistantTranscript = "";
-    currentAssistantTurnDiv = null; // Clear reference to live transcript divs
-    currentUserTurnDiv = null;
-    // Keep currentCallTranscript and lastSpeaker until after potential save
-    
-    // Hide stop call button ONLY if this is a real stop, not cleanup
-    if (!isCleanupOnly && stopCallBtn && stopCallBtn.style.display !== 'none') {
-        console.log("Hiding Stop Call button (normal stop)");
-        stopCallBtn.style.display = 'none';
-    }
-    
-    // Set status only if not already set by connection state change (which should be detached now)
-    // And maybe only if it's a normal stop?
-    if (!isCleanupOnly && callStatus && callStatus.textContent !== 'Call ended.') { 
-         callStatus.textContent = 'Call ended.';
-    }
-    // --- End Cleanup Actions ---
-
-    console.log("stopCall cleanup finished.");
-
-    // --- Attempt to Save Transcript (Only Once, and not if just cleaning up) ---
-    if (!isCleanupOnly && entryIdToSave) {
-        console.log(`stopCall requesting save for entry ID: ${entryIdToSave}`);
-        try {
-            await saveTranscriptToJournal(entryIdToSave);    // Corrected: Pass entryIdToSave to the function
-        } catch (saveError) {
-            console.error(`Error during saveTranscriptToJournal called from stopCall:`, saveError);
-            // Even if save fails, reset the transcript state here
-            currentCallTranscript = "";
-            lastSpeaker = null;
-            conversationMessages = []; // Clear conversation messages on error
-        }
-    } else {
-        if (isCleanupOnly) {
-            console.log("stopCall: Skipping save because isCleanupOnly is true.");
-        } else {
-            console.log("stopCall: No valid entry ID captured, skipping transcript save.");
-        }
-        // Explicitly reset potentially lingering transcript data if no ID to save against or skipping
-        currentCallTranscript = "";
-        lastSpeaker = null;
-    }
-    
-    // --- Final State Reset --- 
-    // Now that saving is attempted/skipped, definitively reset the ID for the next call
-    currentJournalEntryId = null; 
-    console.log("stopCall: Final state reset complete.");
+    // Update with a slight delay to allow database to update
+    setTimeout(() => {
+      loadActionItems();
+    }, 1000);
+  }
 }
+stopCall = _extendedStopCall;
 
 // --- Modified function to accept entry ID as argument ---
 async function saveTranscriptToJournal(entryIdToProcess) {
@@ -1306,30 +1337,32 @@ async function saveTranscriptToJournal(entryIdToProcess) {
 }
 
 // --- Update Event Listener for Toggling Transcripts AND Deleting Entries ---
-if (journalEntriesDiv) {
-    journalEntriesDiv.addEventListener('click', async (event) => { // Make listener async
-        // Check if a header was clicked (for toggling transcript)
-        if (event.target.classList.contains('journal-entry-header')) {
-            // Find the parent journal-entry element
-            const entryElement = event.target.closest('.journal-entry');
-            if (entryElement) {
-                // Find the transcript div within this entry
-                const transcriptDiv = entryElement.querySelector('.journal-transcript');
-                if (transcriptDiv) {
-                    // Toggle display
-                    const isHidden = transcriptDiv.style.display === 'none';
-                    transcriptDiv.style.display = isHidden ? 'block' : 'none';
-                    // Optional: Update header text 
-                    event.target.textContent = event.target.textContent.replace(
-                        isHidden ? '(Click to view transcript)' : '(Click to hide transcript)',
-                        isHidden ? '(Click to hide transcript)' : '(Click to view transcript)'
-                    );
+if (journalEntriesContainer) {
+    journalEntriesContainer.addEventListener('click', (event) => {
+        // Check if a journal entry or its header was clicked (but not action items or buttons)
+        const entryItem = event.target.closest('.journal-item');
+        const isActionItem = event.target.closest('.action-item');
+        const isDeleteButton = event.target.classList.contains('delete-entry-button');
+        
+        // Only toggle transcript if clicking on the entry (not a button or action item)
+        if (entryItem && !isActionItem && !isDeleteButton) {
+            const transcriptDiv = entryItem.querySelector('.journal-transcript');
+            if (transcriptDiv) {
+                // Toggle display
+                const isHidden = transcriptDiv.style.display === 'none';
+                transcriptDiv.style.display = isHidden ? 'flex' : 'none';
+                
+                // Toggle active class
+                if (isHidden) {
+                    entryItem.classList.add('active');
+                } else {
+                    entryItem.classList.remove('active');
                 }
             }
         }
-
-        // Check if a delete button was clicked
-        if (event.target.classList.contains('delete-entry-button')) {
+        
+        // Handle delete button clicks (existing functionality)
+        if (isDeleteButton) {
             const button = event.target;
             const entryId = button.dataset.entryId;
             
@@ -1346,28 +1379,34 @@ if (journalEntriesDiv) {
 
                 try {
                     // Attempt deletion using Supabase client library
-                    // Assumes RLS policy allows users to delete their own entries
-                    const { error: deleteError } = await _supabase
+                    _supabase
                         .from('journal_entries')
                         .delete()
-                        .eq('id', entryId);
+                        .eq('id', entryId)
+                        .then(({ error: deleteError }) => {
+                            if (deleteError) {
+                                throw deleteError;
+                            }
 
-                    if (deleteError) {
-                        throw deleteError; // Throw error to be caught below
-                    }
-
-                    console.log(`Successfully deleted entry ID: ${entryId}`);
-                    // Remove the entry element directly from the DOM for immediate feedback
-                    const entryElementToRemove = button.closest('.journal-entry');
-                    if (entryElementToRemove) {
-                        entryElementToRemove.remove();
-                    } else {
-                        // Fallback: Reload all entries if element wasn't found
-                        loadJournalEntries(); 
-                    }
-
+                            console.log(`Successfully deleted entry ID: ${entryId}`);
+                            // Remove the entry element directly from the DOM for immediate feedback
+                            const entryElementToRemove = button.closest('.journal-item');
+                            if (entryElementToRemove) {
+                                entryElementToRemove.remove();
+                            } else {
+                                // Fallback: Reload all entries if element wasn't found
+                                loadJournalEntries(); 
+                            }
+                        })
+                        .catch(error => {
+                            console.error(`Error deleting journal entry ID ${entryId}:`, error);
+                            alert(`Failed to delete entry: ${error.message}`);
+                            // Re-enable button on error
+                            button.disabled = false; 
+                            button.textContent = 'Delete';
+                        });
                 } catch (error) {
-                    console.error(`Error deleting journal entry ID ${entryId}:`, error);
+                    console.error(`Error initiating delete for journal entry ID ${entryId}:`, error);
                     alert(`Failed to delete entry: ${error.message}`);
                     // Re-enable button on error
                     button.disabled = false; 
@@ -1419,20 +1458,41 @@ async function loadUserProfile() {
             .from('profiles')
             .select(`sobriety_date`)
             .eq('user_id', currentUser.id)
-            .maybeSingle(); // Use maybeSingle() in case profile doesn't exist yet
+            .maybeSingle();
 
-        if (error && status !== 406) { // 406 means no rows found, which is okay with maybeSingle()
+        if (error && status !== 406) {
             throw error;
         }
 
         if (data) {
             console.log("Profile data received:", data);
-            userProfile = data; // Store profile data
-            if (data.sobriety_date && sobrietyDateInput) {
-                sobrietyDateInput.value = data.sobriety_date; // Set input value
+            userProfile = data;
+            
+            if (data.sobriety_date) {
+                if (sobrietyDateInput) {
+                    sobrietyDateInput.value = data.sobriety_date;
+                }
+                
+                // Calculate days sober
+                const sobrietyDate = new Date(data.sobriety_date);
+                const today = new Date();
+                sobrietyDate.setHours(0, 0, 0, 0);
+                today.setHours(0, 0, 0, 0);
+
+                if (!isNaN(sobrietyDate)) {
+                    const diffTime = Math.abs(today - sobrietyDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const daysText = `${diffDays} days`;
+                    
+                    // Update all day counters
+                    if (daysCount) daysCount.textContent = daysText;
+                    if (recoveryDaysCount) recoveryDaysCount.textContent = daysText;
+                    if (recoveryDaysCountEvening) recoveryDaysCountEvening.textContent = daysText;
+                }
+                
                 if (profileStatus) profileStatus.textContent = 'Profile loaded.';
             } else {
-                 if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
+                if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
             }
         } else {
             console.log("No profile found for user.");
@@ -1441,7 +1501,7 @@ async function loadUserProfile() {
     } catch (error) {
         console.error('Error loading user profile:', error);
         if (profileStatus) profileStatus.textContent = 'Error loading profile.';
-        userProfile = null; // Ensure profile is null on error
+        userProfile = null;
     }
 }
 
@@ -1487,52 +1547,281 @@ async function saveUserProfile() {
 
 // --- ATTACH EVENT LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded. Attaching call button listeners...'); // Log DOM loaded
+    console.log('DOM fully loaded. Attaching event listeners...');
     
-    const morningCallBtn = document.getElementById('morning-call-button');
-    const eveningCallBtn = document.getElementById('evening-call-button');
-    stopCallBtn = document.getElementById('stop-call-button'); // Ensure stopCallBtn is assigned here
-
-    // Log found elements
-    console.log('Morning call button element:', morningCallBtn);
-    console.log('Evening call button element:', eveningCallBtn);
-    console.log('Stop call button element:', stopCallBtn);
-
+    // View switching
+    if (switchToEveningBtn) {
+        switchToEveningBtn.addEventListener('click', showEveningView);
+    }
+    
+    if (switchToMorningBtn) {
+        switchToMorningBtn.addEventListener('click', showMorningView);
+    }
+    
+    if (historyBtn) {
+        historyBtn.addEventListener('click', showJournalView);
+    }
+    
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', showProfileView);
+    }
+    
+    if (editDaysBtn) {
+        editDaysBtn.addEventListener('click', showProfileView);
+    }
+    
+    // Profile save button
+    if (saveProfileButton) {
+        saveProfileButton.addEventListener('click', saveUserProfile);
+        console.log("Profile save button listener attached.");
+    }
+    
+    // Today's Action Items event listeners
+    if (addActionBtn) {
+        addActionBtn.addEventListener('click', () => {
+            const text = newActionInput.value.trim();
+            if (text) {
+                addActionItem(text);
+                newActionInput.value = '';
+                newActionInput.focus();
+            }
+        });
+        console.log("Add action button listener attached.");
+    }
+    
+    if (newActionInput) {
+        newActionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const text = newActionInput.value.trim();
+                if (text) {
+                    addActionItem(text);
+                    newActionInput.value = '';
+                }
+            }
+        });
+        console.log("New action input listener attached.");
+    }
+    
+    // Call buttons (along with existing listeners)
     if (morningCallBtn) {
         morningCallBtn.addEventListener('click', () => {
             console.log('Morning Call Button Listener EXECUTED!'); 
             startCall('morning');
         });
-        console.log('Morning call listener attached.');
-    } else {
-        console.error('Morning call button not found! Cannot attach listener.');
     }
-
+    
     if (eveningCallBtn) {
         eveningCallBtn.addEventListener('click', () => {
             console.log('Evening Call Button Listener EXECUTED!'); 
             startCall('evening');
         });
-        console.log('Evening call listener attached.');
-    } else {
-        console.error('Evening call button not found! Cannot attach listener.');
     }
     
     if (stopCallBtn) {
         stopCallBtn.addEventListener('click', () => {
             console.log('Stop Call Button Listener EXECUTED!');
             stopCall();
+            // After call ends, return to appropriate view based on call type
+            if (currentCallType === 'morning') {
+                showMorningView();
+            } else {
+                showEveningView();
+            }
         });
-        console.log('Stop call listener attached.');
-    } else {
-        console.error('Stop call button not found! Cannot attach listener.');
     }
-
-    // Add listener for the profile save button
-    if (saveProfileButton) {
-        saveProfileButton.addEventListener('click', saveUserProfile); // Ensure saveUserProfile exists
-        console.log("Profile save button listener attached.");
-    } else {
-         console.error('Save profile button not found!');
+    
+    // Toggle transcript visibility when clicking on entry headers
+    if (journalEntriesContainer) {
+        journalEntriesContainer.addEventListener('click', (event) => {
+            // Check if a journal entry or its header was clicked (but not action items or buttons)
+            const entryItem = event.target.closest('.journal-item');
+            const isActionItem = event.target.closest('.action-item');
+            const isDeleteButton = event.target.classList.contains('delete-entry-button');
+            
+            // Only toggle transcript if clicking on the entry (not a button or action item)
+            if (entryItem && !isActionItem && !isDeleteButton) {
+                const transcriptDiv = entryItem.querySelector('.journal-transcript');
+                if (transcriptDiv) {
+                    // Toggle display
+                    const isHidden = transcriptDiv.style.display === 'none';
+                    transcriptDiv.style.display = isHidden ? 'flex' : 'none';
+                    
+                    // Toggle active class
+                    if (isHidden) {
+                        entryItem.classList.add('active');
+                    } else {
+                        entryItem.classList.remove('active');
+                    }
+                }
+            }
+            
+            // Handle delete button clicks (existing functionality)
+            if (isDeleteButton) {
+                // ... existing delete logic ...
+            }
+        });
     }
 });
+
+// --- DOM Elements for Action Items ---
+const newActionInput = document.getElementById('new-action-input');
+const addActionBtn = document.getElementById('add-action-btn');
+const todayActionList = document.getElementById('today-action-items');
+
+// --- Today's Action Items Functions ---
+// Function to load existing action items (from local storage for now)
+function loadActionItems() {
+  // Check if element exists before trying to use it
+  if (!todayActionList) {
+    console.log('Today action list element not found, skipping loadActionItems');
+    return;
+  }
+  
+  try {
+    // Clear the current list
+    todayActionList.innerHTML = '';
+    
+    // Get saved action items from local storage
+    const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+    
+    // Display each item
+    savedItems.forEach(item => {
+      addActionItemToDOM(item.text, item.completed);
+    });
+    
+    // If we have action items from a completed morning call, add those too
+    updateActionItemsFromMorningCall();
+  } catch (error) {
+    console.error('Error loading action items:', error);
+  }
+}
+
+// Function to update action items based on morning call results
+function updateActionItemsFromMorningCall() {
+  // Check if we need to update from the latest morning call
+  const todayDate = new Date().toLocaleDateString('en-US');
+  const lastMorningCallDate = localStorage.getItem('lastMorningCallDate');
+  
+  // If we already processed today's call, don't add items again
+  if (lastMorningCallDate === todayDate && localStorage.getItem('morningCallItemsProcessed') === 'true') {
+    return;
+  }
+  
+  // Get the most recent morning call to extract action items
+  _supabase
+    .from('journal_entries')
+    .select('action_items, created_at')
+    .eq('call_type', 'morning')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+    .then(({ data, error }) => {
+      if (error) {
+        console.error('Error loading morning call action items:', error);
+        return;
+      }
+      
+      if (data && data.action_items && Array.isArray(data.action_items)) {
+        // Get current items to avoid duplicates
+        const currentItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+        const currentTexts = currentItems.map(item => item.text.toLowerCase());
+        
+        // Add each action item if not already in the list
+        data.action_items.forEach(item => {
+          if (!currentTexts.includes(item.toLowerCase())) {
+            addActionItem(item);
+          }
+        });
+        
+        // Mark as processed so we don't add them again
+        const callDate = new Date(data.created_at).toLocaleDateString('en-US');
+        localStorage.setItem('lastMorningCallDate', callDate);
+        localStorage.setItem('morningCallItemsProcessed', 'true');
+      }
+    });
+}
+
+// Function to add a new action item to both DOM and storage
+function addActionItem(text) {
+  if (!text || text.trim() === '') return;
+  
+  // Add to DOM
+  addActionItemToDOM(text, false);
+  
+  // Save to local storage
+  const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+  savedItems.push({ text, completed: false });
+  localStorage.setItem('todayActionItems', JSON.stringify(savedItems));
+}
+
+// Function to add an action item to the DOM
+function addActionItemToDOM(text, completed) {
+  if (!todayActionList) return;
+  
+  const li = document.createElement('li');
+  li.classList.add('action-item-row');
+  
+  const checkbox = document.createElement('div');
+  checkbox.classList.add('action-checkbox');
+  if (completed) {
+    checkbox.classList.add('checked');
+  }
+  
+  const itemText = document.createElement('span');
+  itemText.classList.add('action-text');
+  itemText.textContent = text;
+  if (completed) {
+    itemText.classList.add('completed');
+  }
+  
+  const deleteBtn = document.createElement('button');
+  deleteBtn.classList.add('action-delete');
+  deleteBtn.innerHTML = '&times;';
+  
+  li.appendChild(checkbox);
+  li.appendChild(itemText);
+  li.appendChild(deleteBtn);
+  
+  todayActionList.appendChild(li);
+  
+  // Add event listeners
+  checkbox.addEventListener('click', () => {
+    toggleActionItem(li, text);
+  });
+  
+  deleteBtn.addEventListener('click', () => {
+    deleteActionItem(li, text);
+  });
+}
+
+// Function to toggle the completed state of an action item
+function toggleActionItem(element, text) {
+  const checkbox = element.querySelector('.action-checkbox');
+  const itemText = element.querySelector('.action-text');
+  
+  const isCompleted = checkbox.classList.contains('checked');
+  
+  // Toggle UI
+  checkbox.classList.toggle('checked');
+  itemText.classList.toggle('completed');
+  
+  // Update in storage
+  const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+  const itemIndex = savedItems.findIndex(item => item.text === text);
+  
+  if (itemIndex !== -1) {
+    savedItems[itemIndex].completed = !isCompleted;
+    localStorage.setItem('todayActionItems', JSON.stringify(savedItems));
+  }
+}
+
+// Function to delete an action item
+function deleteActionItem(element, text) {
+  // Remove from DOM
+  element.remove();
+  
+  // Remove from storage
+  const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+  const updatedItems = savedItems.filter(item => item.text !== text);
+  localStorage.setItem('todayActionItems', JSON.stringify(updatedItems));
+}

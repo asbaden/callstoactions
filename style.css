@@ -1,60 +1,471 @@
-/* Add custom styles here */
+/* Modern UI styling for Calls to Action app */
 
-.script-format {
-    font-family: Courier, monospace;
-    text-align: center; /* Center all text within the transcript */
+:root {
+  --primary-color: #283593; /* Deep blue header */
+  --background-color: #f5f5f5; /* Light gray background */
+  --card-background: #ffffff; /* White card background */
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --accent-color: #3949ab; /* Accent blue for buttons */
+  --border-color: #e0e0e0;
+  --success-color: #4caf50; /* Green for checkmarks */
+  --morning-color: #ffd54f; /* Yellow for morning icon */
+  --evening-color: #5c6bc0; /* Purple-blue for evening icon */
 }
 
-/* Style potential speaker labels to prevent extra line breaks */
-.script-format strong, 
-.script-format span { /* Assuming speaker labels might be strong or span */
-    display: inline-block; /* Keeps label on the same line as text */
-    margin-right: 0.5em; /* Add some space after the label */
+/* Base styling */
+body {
+  font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--background-color);
+  color: var(--text-primary);
+  line-height: 1.5;
 }
 
-/* Add some spacing between script turns */
-.script-format > div {
-    margin-bottom: 0.5em; 
+/* Header styling */
+header {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-/* Journal Transcript - Chat Bubble Styling */
-.journal-transcript {
-    /* Container retains its style, but we add clearfix for floated bubbles */
-    padding: 10px;
-    background-color: #f0f0f0;
-    border: 1px solid #ccc;
-    margin-top: 10px;
+.header-left {
+  display: flex;
+  align-items: center;
 }
 
-.journal-transcript::after { /* Clearfix for floated children */
-    content: "";
-    display: table;
-    clear: both;
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.sobriety-counter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.app-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.recovery-tag {
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  margin-left: 10px;
+}
+
+/* Main container */
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Card styling */
+.card {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.25rem;
+}
+
+.section-subtitle {
+  color: var(--text-secondary);
+  font-weight: normal;
+  font-size: 1rem;
+  margin-top: 5px;
+}
+
+/* Button styling */
+.button {
+  border: none;
+  border-radius: 50px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.button-primary {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.button-primary:hover {
+  background-color: #303f9f;
+}
+
+.button-text {
+  color: var(--accent-color);
+  background: none;
+  padding: 8px 15px;
+}
+
+.button-text:hover {
+  background-color: rgba(57, 73, 171, 0.1);
+}
+
+.button-icon {
+  margin-right: 8px;
+}
+
+/* Icon styling */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.icon-morning {
+  background-color: var(--morning-color);
+  color: #fff;
+}
+
+.icon-evening {
+  background-color: var(--evening-color);
+  color: #fff;
+}
+
+/* Journal entries list */
+.journal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.journal-item {
+  padding: 15px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.journal-item:hover {
+  background-color: #e3f2fd;
+}
+
+.journal-item.active {
+  background-color: #e3f2fd;
+}
+
+.journal-item:last-child {
+  border-bottom: none;
+}
+
+.journal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.journal-time {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.journal-type {
+  display: flex;
+  align-items: center;
+}
+
+.journal-type-text {
+  margin-left: 5px;
+}
+
+/* Action items */
+.action-items {
+  margin-top: 15px;
+}
+
+.action-items-title {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+  background-color: rgba(249, 249, 249, 0.7);
+  padding: 5px 10px;
+  border-radius: 4px;
+}
+
+.action-item-bullet {
+  color: var(--accent-color);
+  margin-right: 8px;
+}
+
+/* Conversation styling */
+.conversation {
+  margin-top: 20px;
 }
 
 .chat-bubble {
-    padding: 10px 15px;
-    border-radius: 18px;
-    margin-bottom: 8px;
-    max-width: 75%; /* Bubbles don't span full width */
-    word-wrap: break-word; /* Handle long words */
-    position: relative;
-    clear: both; /* Prevent overlap */
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-    line-height: 1.4;
+  padding: 12px 15px;
+  border-radius: 18px;
+  margin-bottom: 12px;
+  max-width: 80%;
+  word-wrap: break-word;
+  line-height: 1.4;
 }
 
 .me-bubble {
-    background-color: #dcf8c6; /* Light green */
-    float: right; /* Align to the right */
-    /* Optional: Tail effect */
-    /* border-bottom-right-radius: 5px; */
+  background-color: #e3f2fd;
+  align-self: flex-end;
+  margin-left: auto;
+  border-bottom-right-radius: 5px;
 }
 
 .actions-bubble {
-    background-color: #ffffff; /* White */
-    border: 1px solid #e9e9eb; /* Subtle border */
-    float: left; /* Align to the left */
-    /* Optional: Tail effect */
-    /* border-bottom-left-radius: 5px; */
+  background-color: #f5f5f5;
+  align-self: flex-start;
+  margin-right: auto;
+  border-bottom-left-radius: 5px;
+}
+
+/* Transcript view */
+.journal-transcript {
+  display: flex;
+  flex-direction: column;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  margin-top: 15px;
+}
+
+/* Auth section */
+#auth-section {
+  text-align: center;
+  margin: 40px 0;
+}
+
+/* Call controls */
+#call-controls {
+  margin-bottom: 30px;
+}
+
+#call-status {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  min-height: 100px;
+}
+
+/* Toggle buttons */
+.switch-button {
+  background-color: var(--accent-color);
+  color: white;
+  padding: 8px 15px;
+  border-radius: 50px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.switch-button:hover {
+  background-color: #303f9f;
+}
+
+/* Center call buttons */
+.call-button-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+/* Delete button */
+.delete-entry-button {
+  background: none;
+  border: none;
+  color: #f44336;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.delete-entry-button:hover {
+  text-decoration: underline;
+}
+
+/* Journal date grouping */
+.date-group {
+  margin-bottom: 30px;
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.date-header {
+  padding: 12px 15px;
+  margin: 0;
+  font-size: 1.1rem;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.date-group .journal-list {
+  padding: 0;
+  margin: 0;
+}
+
+.date-group .journal-item {
+  border-bottom: 1px solid var(--border-color);
+  padding: 15px;
+}
+
+.date-group .journal-item:last-child {
+  border-bottom: none;
+}
+
+/* Today's Action Items section */
+.today-actions-section {
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+.action-input-container {
+  display: flex;
+  margin-bottom: 15px;
+}
+
+.action-input {
+  flex: 1;
+  padding: 12px 15px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+}
+
+.action-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(57, 73, 171, 0.1);
+}
+
+.action-add-btn {
+  width: 40px;
+  height: 40px;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  margin-left: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-add-btn:hover {
+  background-color: #303f9f;
+}
+
+.today-action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.action-item-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.action-item-row:last-child {
+  border-bottom: none;
+}
+
+.action-checkbox {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  margin-right: 15px;
+  cursor: pointer;
+  position: relative;
+}
+
+.action-checkbox.checked {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.action-checkbox.checked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: white;
+}
+
+.action-text {
+  flex: 1;
+  font-size: 1rem;
+}
+
+.action-text.completed {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+.action-delete {
+  color: #ccc;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 5px;
+  margin-left: 10px;
+  font-size: 1rem;
+}
+
+.action-delete:hover {
+  color: #f44336;
+}
+
+.evening-reminder {
+  margin-top: 20px;
+  color: var(--text-secondary);
+  font-style: italic;
 }
