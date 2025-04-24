@@ -1547,38 +1547,205 @@ async function saveUserProfile() {
 
 // --- ATTACH EVENT LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded. Attaching event listeners...');
+    console.log('DOM fully loaded. Initializing app...');
     
-    // View switching
+    // --- DOM Element References ---
+    // Main UI sections
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    const authSection = document.getElementById('auth-section');
+    const mainContent = document.getElementById('main-content');
+    const morningView = document.getElementById('morning-view');
+    const eveningView = document.getElementById('evening-view');
+    const journalView = document.getElementById('journal-view');
+    const profileView = document.getElementById('profile-view');
+    const callInProgress = document.getElementById('call-in-progress');
+    const callStatus = document.getElementById('call-status');
+    const journalEntriesContainer = document.getElementById('journal-entries');
+
+    // Header elements
+    const daysCount = document.getElementById('days-count');
+    const recoveryDaysCount = document.getElementById('recovery-days-count');
+    const recoveryDaysCountEvening = document.getElementById('recovery-days-count-evening');
+    const editDaysBtn = document.getElementById('edit-days-btn');
+    const historyBtn = document.getElementById('history-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+
+    // View switching buttons
+    const switchToEveningBtn = document.getElementById('switch-to-evening');
+    const switchToMorningBtn = document.getElementById('switch-to-morning');
+
+    // Call buttons
+    const morningCallBtn = document.getElementById('morning-call-button');
+    const eveningCallBtn = document.getElementById('evening-call-button');
+    const stopCallBtn = document.getElementById('stop-call-button');
+
+    // Profile elements
+    const sobrietyDateInput = document.getElementById('sobriety-date');
+    const saveProfileButton = document.getElementById('save-profile-button');
+    const profileStatus = document.getElementById('profile-status');
+    
+    // Action Items
+    const newActionInput = document.getElementById('new-action-input');
+    const addActionBtn = document.getElementById('add-action-btn');
+    const todayActionList = document.getElementById('today-action-items');
+    
+    // Log the state of some key elements for debugging
+    console.log('UI Elements:', {
+        switchToEveningBtn: !!switchToEveningBtn,
+        switchToMorningBtn: !!switchToMorningBtn,
+        morningCallBtn: !!morningCallBtn,
+        eveningCallBtn: !!eveningCallBtn,
+        historyBtn: !!historyBtn
+    });
+    
+    // --- View Switching Functions ---
+    function showMorningView() {
+        console.log('Showing morning view');
+        if (!morningView) return console.error('Morning view element not found');
+        
+        morningView.style.display = 'block';
+        if (eveningView) eveningView.style.display = 'none';
+        if (journalView) journalView.style.display = 'none';
+        if (profileView) profileView.style.display = 'none';
+        if (callInProgress) callInProgress.style.display = 'none';
+    }
+
+    function showEveningView() {
+        console.log('Showing evening view');
+        if (!eveningView) return console.error('Evening view element not found');
+        
+        if (morningView) morningView.style.display = 'none';
+        eveningView.style.display = 'block';
+        if (journalView) journalView.style.display = 'none';
+        if (profileView) profileView.style.display = 'none';
+        if (callInProgress) callInProgress.style.display = 'none';
+    }
+
+    function showJournalView() {
+        console.log('Showing journal view');
+        if (!journalView) return console.error('Journal view element not found');
+        
+        if (morningView) morningView.style.display = 'none';
+        if (eveningView) eveningView.style.display = 'none';
+        journalView.style.display = 'block';
+        if (profileView) profileView.style.display = 'none';
+        if (callInProgress) callInProgress.style.display = 'none';
+        
+        // Load entries when switching to journal view
+        loadJournalEntries();
+    }
+
+    function showProfileView() {
+        console.log('Showing profile view');
+        if (!profileView) return console.error('Profile view element not found');
+        
+        if (morningView) morningView.style.display = 'none';
+        if (eveningView) eveningView.style.display = 'none';
+        if (journalView) journalView.style.display = 'none';
+        profileView.style.display = 'block';
+        if (callInProgress) callInProgress.style.display = 'none';
+    }
+
+    function showCallInProgress() {
+        console.log('Showing call in progress view');
+        if (!callInProgress) return console.error('Call in progress view element not found');
+        
+        if (morningView) morningView.style.display = 'none';
+        if (eveningView) eveningView.style.display = 'none';
+        if (journalView) journalView.style.display = 'none';
+        if (profileView) profileView.style.display = 'none';
+        callInProgress.style.display = 'block';
+    }
+    
+    // --- View Button Event Listeners ---
     if (switchToEveningBtn) {
-        switchToEveningBtn.addEventListener('click', showEveningView);
+        switchToEveningBtn.addEventListener('click', () => {
+            console.log('Switch to evening button clicked');
+            showEveningView();
+        });
+    } else {
+        console.error('Switch to evening button element not found');
     }
     
     if (switchToMorningBtn) {
-        switchToMorningBtn.addEventListener('click', showMorningView);
+        switchToMorningBtn.addEventListener('click', () => {
+            console.log('Switch to morning button clicked');
+            showMorningView();
+        });
+    } else {
+        console.error('Switch to morning button element not found');
     }
     
     if (historyBtn) {
-        historyBtn.addEventListener('click', showJournalView);
+        historyBtn.addEventListener('click', () => {
+            console.log('History button clicked');
+            showJournalView();
+        });
+    } else {
+        console.error('History button element not found');
     }
     
     if (settingsBtn) {
-        settingsBtn.addEventListener('click', showProfileView);
+        settingsBtn.addEventListener('click', () => {
+            console.log('Settings button clicked');
+            showProfileView();
+        });
     }
     
     if (editDaysBtn) {
-        editDaysBtn.addEventListener('click', showProfileView);
+        editDaysBtn.addEventListener('click', () => {
+            console.log('Edit days button clicked');
+            showProfileView();
+        });
     }
     
-    // Profile save button
+    // --- Call Button Event Listeners ---
+    if (morningCallBtn) {
+        morningCallBtn.addEventListener('click', () => {
+            console.log('Morning Call Button Clicked');
+            startCall('morning');
+        });
+    } else {
+        console.error('Morning call button element not found');
+    }
+    
+    if (eveningCallBtn) {
+        eveningCallBtn.addEventListener('click', () => {
+            console.log('Evening Call Button Clicked');
+            startCall('evening');
+        });
+    } else {
+        console.error('Evening call button element not found');
+    }
+    
+    if (stopCallBtn) {
+        stopCallBtn.addEventListener('click', () => {
+            console.log('Stop Call Button Clicked');
+            stopCall();
+            // After call ends, return to appropriate view based on call type
+            setTimeout(() => {
+                if (currentCallType === 'morning') {
+                    showMorningView();
+                } else {
+                    showEveningView();
+                }
+            }, 500);
+        });
+    }
+    
+    // --- Profile Button Event Listeners ---
     if (saveProfileButton) {
-        saveProfileButton.addEventListener('click', saveUserProfile);
-        console.log("Profile save button listener attached.");
+        saveProfileButton.addEventListener('click', () => {
+            console.log('Save profile button clicked');
+            saveUserProfile();
+        });
     }
     
-    // Today's Action Items event listeners
-    if (addActionBtn) {
+    // --- Action Items Event Listeners ---
+    if (addActionBtn && newActionInput) {
         addActionBtn.addEventListener('click', () => {
+            console.log('Add action button clicked');
             const text = newActionInput.value.trim();
             if (text) {
                 addActionItem(text);
@@ -1586,10 +1753,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 newActionInput.focus();
             }
         });
-        console.log("Add action button listener attached.");
-    }
-    
-    if (newActionInput) {
+        
         newActionInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 const text = newActionInput.value.trim();
@@ -1599,229 +1763,208 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-        console.log("New action input listener attached.");
     }
     
-    // Call buttons (along with existing listeners)
-    if (morningCallBtn) {
-        morningCallBtn.addEventListener('click', () => {
-            console.log('Morning Call Button Listener EXECUTED!'); 
-            startCall('morning');
-        });
-    }
+    // --- Override Global Functions ---
+    // These functions will now use the DOM elements from this closure
+    window.showMorningView = showMorningView;
+    window.showEveningView = showEveningView;
+    window.showJournalView = showJournalView;
+    window.showProfileView = showProfileView;
+    window.showCallInProgress = showCallInProgress;
     
-    if (eveningCallBtn) {
-        eveningCallBtn.addEventListener('click', () => {
-            console.log('Evening Call Button Listener EXECUTED!'); 
-            startCall('evening');
-        });
-    }
-    
-    if (stopCallBtn) {
-        stopCallBtn.addEventListener('click', () => {
-            console.log('Stop Call Button Listener EXECUTED!');
-            stopCall();
-            // After call ends, return to appropriate view based on call type
-            if (currentCallType === 'morning') {
-                showMorningView();
-            } else {
-                showEveningView();
-            }
-        });
-    }
-    
-    // Toggle transcript visibility when clicking on entry headers
-    if (journalEntriesContainer) {
-        journalEntriesContainer.addEventListener('click', (event) => {
-            // Check if a journal entry or its header was clicked (but not action items or buttons)
-            const entryItem = event.target.closest('.journal-item');
-            const isActionItem = event.target.closest('.action-item');
-            const isDeleteButton = event.target.classList.contains('delete-entry-button');
-            
-            // Only toggle transcript if clicking on the entry (not a button or action item)
-            if (entryItem && !isActionItem && !isDeleteButton) {
-                const transcriptDiv = entryItem.querySelector('.journal-transcript');
-                if (transcriptDiv) {
-                    // Toggle display
-                    const isHidden = transcriptDiv.style.display === 'none';
-                    transcriptDiv.style.display = isHidden ? 'flex' : 'none';
-                    
-                    // Toggle active class
-                    if (isHidden) {
-                        entryItem.classList.add('active');
-                    } else {
-                        entryItem.classList.remove('active');
+    // --- Override updateUI to use our local DOM references ---
+    window.updateUI = function(user) {
+        console.log('UpdateUI called with user:', user?.email);
+        currentUser = user;
+        
+        try {
+            if (user) {
+                // User is logged in
+                if (authSection) authSection.style.display = 'none';
+                if (mainContent) mainContent.style.display = 'block';
+                showMorningView(); // Default to morning view
+                
+                // Load data after showing the view
+                setTimeout(() => {
+                    if (currentUser) { // Verify user is still logged in after timeout
+                        loadJournalEntries();
+                        loadUserProfile();
+                        loadActionItems();
+                        console.log('UI data loaded for user:', user.email);
                     }
-                }
+                }, 100);
+            } else {
+                // User is logged out
+                if (authSection) authSection.style.display = 'block';
+                if (mainContent) mainContent.style.display = 'none';
+                if (sobrietyDateInput) sobrietyDateInput.value = '';
+                if (profileStatus) profileStatus.textContent = '';
+                if (journalEntriesContainer) journalEntriesContainer.innerHTML = '';
+                console.log('UI Updated: User logged out');
             }
+        } catch (err) {
+            console.error('Error in updateUI:', err);
+        }
+    };
+    
+    // Fix for action items and DOM references
+    window.loadActionItems = function() {
+        const actionList = document.getElementById('today-action-items');
+        if (!actionList) {
+            console.log('Today action list element not found, skipping loadActionItems');
+            return;
+        }
+        
+        try {
+            // Clear the current list
+            actionList.innerHTML = '';
             
-            // Handle delete button clicks (existing functionality)
-            if (isDeleteButton) {
-                // ... existing delete logic ...
-            }
+            // Get saved action items from local storage
+            const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+            
+            // Display each item
+            savedItems.forEach(item => {
+                addActionItemToDOM(item.text, item.completed, actionList);
+            });
+            
+            // If we have action items from a completed morning call, add those too
+            updateActionItemsFromMorningCall(actionList);
+        } catch (error) {
+            console.error('Error loading action items:', error);
+        }
+    };
+    
+    window.addActionItemToDOM = function(text, completed, targetList) {
+        const actionList = targetList || document.getElementById('today-action-items');
+        if (!actionList) return;
+        
+        const li = document.createElement('li');
+        li.classList.add('action-item-row');
+        
+        const checkbox = document.createElement('div');
+        checkbox.classList.add('action-checkbox');
+        if (completed) {
+            checkbox.classList.add('checked');
+        }
+        
+        const itemText = document.createElement('span');
+        itemText.classList.add('action-text');
+        itemText.textContent = text;
+        if (completed) {
+            itemText.classList.add('completed');
+        }
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.classList.add('action-delete');
+        deleteBtn.innerHTML = '&times;';
+        
+        li.appendChild(checkbox);
+        li.appendChild(itemText);
+        li.appendChild(deleteBtn);
+        
+        actionList.appendChild(li);
+        
+        // Add event listeners
+        checkbox.addEventListener('click', () => {
+            toggleActionItem(li, text);
         });
-    }
+        
+        deleteBtn.addEventListener('click', () => {
+            deleteActionItem(li, text);
+        });
+    };
+    
+    // --- Initialize Auth State ---
+    console.log('Checking initial authentication state...');
+    _supabase.auth.getUser().then(({ data: { user }, error }) => {
+        if (error) {
+            console.error('Error getting initial user:', error);
+            updateUI(null);
+        } else if (user) {
+            console.log('Initial user found:', user.email);
+            updateUI(user);
+        } else {
+            console.log('No initial user found');
+            updateUI(null);
+        }
+    }).catch(err => {
+        console.error('Exception during initial auth check:', err);
+        updateUI(null);
+    });
+    
+    console.log('App initialization complete');
 });
 
-// --- DOM Elements for Action Items ---
-const newActionInput = document.getElementById('new-action-input');
-const addActionBtn = document.getElementById('add-action-btn');
-const todayActionList = document.getElementById('today-action-items');
-
-// --- Today's Action Items Functions ---
-// Function to load existing action items (from local storage for now)
-function loadActionItems() {
-  // Check if element exists before trying to use it
-  if (!todayActionList) {
-    console.log('Today action list element not found, skipping loadActionItems');
-    return;
-  }
-  
-  try {
-    // Clear the current list
-    todayActionList.innerHTML = '';
+// --- Journal Entry Event Listeners ---
+if (journalEntriesContainer) {
+  journalEntriesContainer.addEventListener('click', (event) => {
+    // Check if a journal entry or its header was clicked (but not action items or buttons)
+    const entryItem = event.target.closest('.journal-item');
+    const isActionItem = event.target.closest('.action-item');
+    const isDeleteButton = event.target.classList.contains('delete-entry-button');
     
-    // Get saved action items from local storage
-    const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
+    // Only toggle transcript if clicking on the entry (not a button or action item)
+    if (entryItem && !isActionItem && !isDeleteButton) {
+      const transcriptDiv = entryItem.querySelector('.journal-transcript');
+      if (transcriptDiv) {
+        // Toggle display
+        const isHidden = transcriptDiv.style.display === 'none';
+        transcriptDiv.style.display = isHidden ? 'flex' : 'none';
+        
+        // Toggle active class
+        if (isHidden) {
+          entryItem.classList.add('active');
+        } else {
+          entryItem.classList.remove('active');
+        }
+      }
+    }
     
-    // Display each item
-    savedItems.forEach(item => {
-      addActionItemToDOM(item.text, item.completed);
-    });
-    
-    // If we have action items from a completed morning call, add those too
-    updateActionItemsFromMorningCall();
-  } catch (error) {
-    console.error('Error loading action items:', error);
-  }
-}
-
-// Function to update action items based on morning call results
-function updateActionItemsFromMorningCall() {
-  // Check if we need to update from the latest morning call
-  const todayDate = new Date().toLocaleDateString('en-US');
-  const lastMorningCallDate = localStorage.getItem('lastMorningCallDate');
-  
-  // If we already processed today's call, don't add items again
-  if (lastMorningCallDate === todayDate && localStorage.getItem('morningCallItemsProcessed') === 'true') {
-    return;
-  }
-  
-  // Get the most recent morning call to extract action items
-  _supabase
-    .from('journal_entries')
-    .select('action_items, created_at')
-    .eq('call_type', 'morning')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
-    .then(({ data, error }) => {
-      if (error) {
-        console.error('Error loading morning call action items:', error);
+    // Handle delete button clicks
+    if (isDeleteButton) {
+      const button = event.target;
+      const entryId = button.dataset.entryId;
+      
+      if (!entryId) {
+        console.error("Delete button clicked but missing entry ID.");
         return;
       }
-      
-      if (data && data.action_items && Array.isArray(data.action_items)) {
-        // Get current items to avoid duplicates
-        const currentItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
-        const currentTexts = currentItems.map(item => item.text.toLowerCase());
-        
-        // Add each action item if not already in the list
-        data.action_items.forEach(item => {
-          if (!currentTexts.includes(item.toLowerCase())) {
-            addActionItem(item);
-          }
-        });
-        
-        // Mark as processed so we don't add them again
-        const callDate = new Date(data.created_at).toLocaleDateString('en-US');
-        localStorage.setItem('lastMorningCallDate', callDate);
-        localStorage.setItem('morningCallItemsProcessed', 'true');
+
+      // --- Confirmation Dialog --- 
+      if (window.confirm("Are you sure you want to delete this journal entry? This cannot be undone.")) {
+        console.log(`Attempting to delete journal entry ID: ${entryId}`);
+        button.disabled = true; // Disable button during deletion
+        button.textContent = 'Deleting...';
+
+        _supabase
+          .from('journal_entries')
+          .delete()
+          .eq('id', entryId)
+          .then(({ error: deleteError }) => {
+            if (deleteError) {
+              console.error(`Error deleting journal entry ID ${entryId}:`, deleteError);
+              alert(`Failed to delete entry: ${deleteError.message}`);
+              button.disabled = false; 
+              button.textContent = 'Delete';
+              return;
+            }
+
+            console.log(`Successfully deleted entry ID: ${entryId}`);
+            const entryElementToRemove = button.closest('.journal-item');
+            if (entryElementToRemove) {
+              entryElementToRemove.remove();
+            } else {
+              loadJournalEntries(); 
+            }
+          })
+          .catch(error => {
+            console.error(`Error deleting journal entry ID ${entryId}:`, error);
+            alert(`Failed to delete entry: ${error.message}`);
+            button.disabled = false; 
+            button.textContent = 'Delete';
+          });
       }
-    });
-}
-
-// Function to add a new action item to both DOM and storage
-function addActionItem(text) {
-  if (!text || text.trim() === '') return;
-  
-  // Add to DOM
-  addActionItemToDOM(text, false);
-  
-  // Save to local storage
-  const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
-  savedItems.push({ text, completed: false });
-  localStorage.setItem('todayActionItems', JSON.stringify(savedItems));
-}
-
-// Function to add an action item to the DOM
-function addActionItemToDOM(text, completed) {
-  if (!todayActionList) return;
-  
-  const li = document.createElement('li');
-  li.classList.add('action-item-row');
-  
-  const checkbox = document.createElement('div');
-  checkbox.classList.add('action-checkbox');
-  if (completed) {
-    checkbox.classList.add('checked');
-  }
-  
-  const itemText = document.createElement('span');
-  itemText.classList.add('action-text');
-  itemText.textContent = text;
-  if (completed) {
-    itemText.classList.add('completed');
-  }
-  
-  const deleteBtn = document.createElement('button');
-  deleteBtn.classList.add('action-delete');
-  deleteBtn.innerHTML = '&times;';
-  
-  li.appendChild(checkbox);
-  li.appendChild(itemText);
-  li.appendChild(deleteBtn);
-  
-  todayActionList.appendChild(li);
-  
-  // Add event listeners
-  checkbox.addEventListener('click', () => {
-    toggleActionItem(li, text);
+    }
   });
-  
-  deleteBtn.addEventListener('click', () => {
-    deleteActionItem(li, text);
-  });
-}
-
-// Function to toggle the completed state of an action item
-function toggleActionItem(element, text) {
-  const checkbox = element.querySelector('.action-checkbox');
-  const itemText = element.querySelector('.action-text');
-  
-  const isCompleted = checkbox.classList.contains('checked');
-  
-  // Toggle UI
-  checkbox.classList.toggle('checked');
-  itemText.classList.toggle('completed');
-  
-  // Update in storage
-  const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
-  const itemIndex = savedItems.findIndex(item => item.text === text);
-  
-  if (itemIndex !== -1) {
-    savedItems[itemIndex].completed = !isCompleted;
-    localStorage.setItem('todayActionItems', JSON.stringify(savedItems));
-  }
-}
-
-// Function to delete an action item
-function deleteActionItem(element, text) {
-  // Remove from DOM
-  element.remove();
-  
-  // Remove from storage
-  const savedItems = JSON.parse(localStorage.getItem('todayActionItems')) || [];
-  const updatedItems = savedItems.filter(item => item.text !== text);
-  localStorage.setItem('todayActionItems', JSON.stringify(updatedItems));
 }
