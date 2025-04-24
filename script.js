@@ -187,67 +187,40 @@ async function loadJournalEntries() {
             // --- Format Transcript (Chat Bubbles) ---
             let transcriptHTML = ''; // Declare once
             if (entry.full_transcript) {
-                // --- Format Transcript with Speaker Grouping ---
+                // --- NEW Simplified Formatting Logic ---
                 let formattedTranscript = "";
-                const lines = entry.full_transcript.split('\n');
-                let currentSpeaker = null;
-                let currentUtterance = "";
-            
-                function flushUtterance() {
-                    if (currentSpeaker && currentUtterance.trim() !== "") {
-                        // Determine bubble alignment and specific class
-                        const alignmentClass = currentSpeaker === "Me" ? 'me-bubble' : 'actions-bubble';
-                        
-                        // Get the trimmed utterance directly (space-separated)
-                        const utteranceHTML = currentUtterance.trim();
+                // Split by one or more newlines and filter out empty lines
+                const lines = entry.full_transcript.split(/\n+/).filter(line => line.trim() !== '');
 
-                        // Create the bubble div
-                        formattedTranscript += `<div class="chat-bubble ${alignmentClass}">${utteranceHTML}</div>`; 
-                    }
-                    currentUtterance = ""; // Reset utterance
-                }
-            
                 lines.forEach(line => {
-                    const trimmedLine = line.trim();
-                    // Skip empty lines entirely
-                    if (trimmedLine === "") return; 
-            
-                    let speaker = null;
-                    let text = ""; // Initialize text
-            
+                    const trimmedLine = line.trim(); // Trim each line
+                    let text = "";
+                    let alignmentClass = '';
+
                     if (trimmedLine.startsWith("Me:")) {
-                        speaker = "Me";
-                        // Get text after prefix, keep internal whitespace
-                        text = line.substring(3).trimLeft(); 
+                        text = trimmedLine.substring(3).trim(); // Get text after prefix and trim
+                        alignmentClass = 'me-bubble';
                     } else if (trimmedLine.startsWith("Actions:")) {
-                        speaker = "Actions";
-                         // Get text after prefix, keep internal whitespace
-                        text = line.substring(8).trimLeft();
+                        text = trimmedLine.substring(8).trim(); // Get text after prefix and trim
+                        alignmentClass = 'actions-bubble';
                     } else {
-                        // Line without prefix - assume continuation of the last speaker OR default if first line
-                        speaker = currentSpeaker || "Actions"; // Default to Actions if no speaker yet
-                        text = line; // Use the original line content (keeping leading/trailing space relative to this line)
+                        // Fallback for unexpected lines (log and display as AI)
+                        console.warn("Found transcript line without expected prefix:", trimmedLine);
+                        text = trimmedLine; // Use the line as is
+                        alignmentClass = 'actions-bubble'; // Default to AI bubble
                     }
-            
-                    if (speaker && speaker !== currentSpeaker) {
-                        // Speaker changed, flush the previous utterance
-                        flushUtterance();
-                        currentSpeaker = speaker;
-                        currentUtterance = text.trim(); // Start new utterance, trim leading/trailing space
-                    } else {
-                         // Same speaker (or continuation assumed), append text with a SPACE
-                        currentUtterance += (currentUtterance ? " " + text.trim() : text.trim()); 
+
+                    // Create a new bubble for each valid line
+                    if (alignmentClass && text) {
+                         formattedTranscript += `<div class="chat-bubble ${alignmentClass}">${text}</div>`;
                     }
                 });
-            
-                // Flush the last utterance after the loop
-                flushUtterance();
-                // --- End Formatting ---
+                // --- End Simplified Formatting Logic ---
 
                 transcriptHTML = `
                    <div class="journal-transcript" style="display: none;">
                        <strong>Full Transcript:</strong><br>
-                       ${formattedTranscript} 
+                       ${formattedTranscript}
                    </div>
                `;
             } else {
@@ -300,6 +273,9 @@ let lastSpeaker = null; // Track last speaker for formatting ('Me', 'Actions', n
 let currentAssistantTurnDiv = null; // Keep track of the current div for AI delta updates
 let currentUserTurnDiv = null; // Keep track of the current div for user delta updates (if needed)
 let waitingForUserResponse = false; // NEW: Flag to track when AI has asked a question and waiting for user
+let conversationMessages = []; // Initialize conversationMessages globally
+let currentSpeaker = null; // Initialize currentSpeaker to prevent "not defined" errors
+console.log("Initialized global conversation state variables");
 
 // Placeholder for the backend endpoint that provides OpenAI session tokens
 const OPENAI_SESSION_ENDPOINT = '/api/openai-session';
@@ -790,7 +766,14 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                           // 2. Append user transcript to raw log (WITH prefix and newline)
                           currentCallTranscript += `Me: ${userText}\n`; 
                           
-                          // 3. Reset AI response tracking and response waiting flag
+                          // 3. Add user message to conversationMessages for transcript saving
+                          conversationMessages.push({
+                              speaker: "User",
+                              text: userText
+                          });
+                          console.log("Added user message to conversationMessages:", conversationMessages);
+                          
+                          // 4. Reset AI response tracking and response waiting flag
                           currentAiResponseId = null;
                           assistantTranscript = "";
                           currentAssistantTurnDiv = null;
@@ -800,86 +783,192 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                       }
                       break;
 
-                 // --- Handle AI speech delta ---
+                 // --- Handle AI text chunks ---
+                 case 'response.content_part.added':
+                     console.log("Content part message:", message);
+                     // Log the actual content structure to understand how it's formatted
+                     console.log("Content structure:", JSON.stringify(message.content));
+                     
+                     // Try to find the text content in various possible locations
+                     let textContent = "";
+                     if (message.content?.text) {
+                         textContent = message.content.text;
+                     } else if (message.content?.value) {
+                         textContent = message.content.value;
+                     } else if (typeof message.content === 'string') {
+                         textContent = message.content;
+                     }
+                     
+                     console.log("Extracted text content:", textContent);
+                     
+                     if (textContent) {
+                         // Set the current speaker to AI if not already set
+                         if (currentSpeaker !== "AI") {
+                             currentSpeaker = "AI";
+                             currentMessage = textContent;
+                         } else {
+                             // Accumulate the AI message text
+                             currentMessage += textContent;
+                         }
+                         console.log("Accumulated AI message so far:", currentMessage);
+                         
+                         // Update display in real-time
+                         if (currentAssistantTurnDiv && lastSpeaker === "Actions") {
+                             // If we already have a bubble for this AI response, update it
+                             assistantTranscript += textContent;
+                             currentAssistantTurnDiv.textContent = assistantTranscript;
+                         } else {
+                             // Create a new bubble for this AI response
+                             const turnDiv = addTurnDiv("Actions", textContent);
+                             currentAssistantTurnDiv = turnDiv.querySelector('span');
+                             assistantTranscript = textContent;
+                             
+                             // Update raw transcript format as well
+                             if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
+                                 currentCallTranscript += '\n';
+                             }
+                             currentCallTranscript += `Actions: ${textContent}`;
+                             lastSpeaker = 'Actions';
+                         }
+                         
+                         // Add to conversationMessages if we have enough text
+                         if (currentMessage.length >= 5 && !conversationMessages.some(msg => msg.speaker === "AI" && msg.text.includes(currentMessage))) {
+                             conversationMessages.push({
+                                 speaker: "AI",
+                                 text: currentMessage
+                             });
+                             console.log("Added current message to conversationMessages:", conversationMessages);
+                         }
+                     }
+                     break;
+
+                 // --- Handle incremental AI speech content ---
                  case 'response.audio_transcript.delta':
-                      // --- REVISED Check: Only append if same response ID and we have a div for it ---
-                      if (message.response_id && 
-                          message.response_id === currentAiResponseId && 
-                          currentAssistantTurnDiv) 
-                      {
-                           // --- Continuation: Append text to the existing AI bubble ---
-                           assistantTranscript += message.delta; // Append to display accumulator
-                           currentCallTranscript += message.delta; // Append to raw log
-                           currentAssistantTurnDiv.textContent = assistantTranscript; // Update existing span
-                      } else {
-                           // --- Start of a *new* visual AI bubble ---
-                           // (Must be a new response_id OR first delta after response.done/error)
-                           
-                           // 1. Finalize previous turn in raw log (if needed)
-                           if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
-                                currentCallTranscript += '\n';
-                           } else if (lastSpeaker === 'Me' && !currentCallTranscript.endsWith('\n')) {
-                                currentCallTranscript += '\n';
-                           }
+                     // console.log("AI transcript delta received:", message);
+                     // Check for content in various possible locations
+                     let deltaText = "";
+                     if (message.delta) {
+                         deltaText = message.delta;
+                     } else if (message.content?.delta) {
+                         deltaText = message.content.delta;
+                     }
 
-                           // 2. Create NEW display bubble for this AI text
-                           const turnDiv = addTurnDiv("Actions", message.delta);
-                           currentAssistantTurnDiv = turnDiv.querySelector('span'); // Get the span for potential future appends
-                           
-                           // 3. Reset display accumulator and update tracking variables
-                           assistantTranscript = message.delta;
-                           currentAiResponseId = message.response_id; // Track this response ID
-                           lastSpeaker = 'Actions'; // Set speaker for the bubble just added
+                     if (deltaText) {
+                         // console.log("AI transcript delta content:", deltaText);
 
-                           // 4. Add prefix and text to raw log for this new turn
-                           // Ensure we start a new line with proper prefix for transcript clarity
-                           if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
-                               currentCallTranscript += '\n';
-                           }
-                           // Always add the Actions prefix for a new AI response
-                           currentCallTranscript += `Actions: ${message.delta}`;
-                           
-                           // 5. Set waiting flag if the AI text appears to be asking a question (heuristic)
-                           if (message.delta.includes('?')) {
-                               waitingForUserResponse = true;
-                               console.log("AI asked a question, waiting for user response...");
-                           }
-                      }
-                      break;
+                         // Update display in real-time & raw transcript
+                         if (currentAssistantTurnDiv && lastSpeaker === 'Actions') {
+                             // If we already have a bubble for this AI response, update it
+                             assistantTranscript += deltaText;
+                             currentAssistantTurnDiv.textContent = assistantTranscript;
+                             // Append delta to raw transcript (no prefix)
+                             currentCallTranscript += deltaText;
+                         } else {
+                             // Create a new bubble for this AI response
+                             const turnDiv = addTurnDiv("Actions", deltaText);
+                             currentAssistantTurnDiv = turnDiv.querySelector('span');
+                             assistantTranscript = deltaText;
 
-                 // --- Handle response completion ---
-                 case 'response.done':
-                      if (message.response_id === currentAiResponseId) {
-                           console.log(`response.done received for currently displayed AI response: ${currentAiResponseId}`);
-                           // Add final newline to raw log if needed
-                           if (lastSpeaker === 'Actions' && !currentCallTranscript.endsWith('\n')) {
-                                currentCallTranscript += '\n';
-                           }
-                           
-                           // Only fully clear AI response tracking if not waiting for user response
-                           // This prevents splitting AI utterances that form a logical turn
-                           if (!waitingForUserResponse) {
-                               currentAiResponseId = null; 
-                               assistantTranscript = ""; 
-                               currentAssistantTurnDiv = null;
-                           } else {
-                               console.log("Keeping response context as waiting for user input");
-                           }
-                           
-                           // Make sure the transcript format is clean
-                           if (!currentCallTranscript.endsWith('\n\n') && !currentCallTranscript.endsWith('\n')) {
-                               currentCallTranscript += '\n';
-                           }
-                      }
-                      // Log full response object if present
-                      if (message.response) {
-                          console.log("Full response object on 'response.done':", message.response);
-                          if (message.response.status === 'failed' && message.response.status_details) {
-                              console.error("Response generation failed. Details:", message.response.status_details);
-                          }
-                      }
-                      break;
-                 
+                             // Update raw transcript format - Add prefix ONLY for the first delta
+                             if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
+                                 currentCallTranscript += '\n';
+                             }
+                             currentCallTranscript += `Actions: ${deltaText}`; // Add prefix here
+                             lastSpeaker = 'Actions';
+                         }
+
+                         // Accumulate for the structured messages using global vars
+                         if (!currentSpeaker || currentSpeaker !== "AI") { // Start of new AI message
+                             currentSpeaker = "AI";
+                             currentMessage = deltaText;
+                         } else { // Continuation of AI message
+                             currentMessage += deltaText;
+                         }
+                     }
+                     break;
+
+                 // --- Handle complete AI speech transcript ---
+                 case 'response.audio_transcript.done':
+                     console.log("AI speech transcript received:", message);
+                     // The transcript might be directly in message.transcript or nested inside other fields
+                     let aiText = "";
+                     
+                     if (message.transcript) {
+                         aiText = message.transcript.trim();
+                     } else if (message.item && message.item.transcript) {
+                         aiText = message.item.transcript.trim();
+                     } else if (message.response && message.response.transcript) {
+                         aiText = message.response.transcript.trim();
+                     } else if (message.content && message.content.transcript) {
+                         aiText = message.content.transcript.trim();
+                     }
+                     
+                     console.log("AI transcript content:", aiText);
+                     
+                     // Only process if we found text content
+                     if (aiText) {
+                         // Add the AI response to our structured conversation if not already added
+                         conversationMessages.push({
+                             speaker: "AI",
+                             text: aiText
+                         });
+                         
+                         // Also update the display
+                         const turnDiv = addTurnDiv("Actions", aiText);
+                         currentAssistantTurnDiv = turnDiv.querySelector('span');
+                         
+                         // Update raw transcript format as well
+                         if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
+                             currentCallTranscript += '\n';
+                         }
+                         currentCallTranscript += `Actions: ${aiText}\n`;
+                         lastSpeaker = 'Actions';
+                         
+                         // Log for debugging
+                         console.log("Updated conversationMessages:", conversationMessages);
+                         console.log("Updated currentCallTranscript:", currentCallTranscript);
+                     } else {
+                         // If no transcript content was found, log the full message structure for debugging
+                         console.log("Could not find transcript content. Full message structure:", JSON.stringify(message));
+                     }
+                     break;
+
+                 // --- Finalize AI turn ---
+                 case 'response.output_item.done':
+                     console.log("AI response output complete:", message);
+
+                     // Add the complete accumulated AI message to structured conversation
+                     if (currentSpeaker === 'AI' && currentMessage) {
+                         // Check if a similar message (prefix) already exists to avoid duplicates
+                         const existingMsgIndex = conversationMessages.findIndex(msg => msg.speaker === "AI" && msg.text.startsWith(currentMessage.substring(0, 20)));
+                         if (existingMsgIndex === -1) {
+                           conversationMessages.push({
+                               speaker: "AI",
+                               text: currentMessage.trim() // Save trimmed complete message
+                           });
+                           console.log("Added final AI message to conversationMessages:", conversationMessages);
+                         } else {
+                             // Optionally update the existing message if the new one is longer/more complete
+                             if (currentMessage.length > conversationMessages[existingMsgIndex].text.length) {
+                                 conversationMessages[existingMsgIndex].text = currentMessage.trim();
+                                 console.log("Updated existing AI message in conversationMessages:", conversationMessages);
+                             }
+                         }
+                     }
+
+                     // Finalize raw transcript with a newline if needed
+                     if (lastSpeaker === 'Actions' && currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
+                         currentCallTranscript += '\n';
+                     }
+
+                     // Reset state for the next turn
+                     currentMessage = "";
+                     currentSpeaker = null;
+                     assistantTranscript = ""; // Reset live display accumulator
+                     currentAssistantTurnDiv = null; // Reset live display div
+                     // lastSpeaker remains 'Actions' until user speaks
+                     break;
+
                  // --- Handle session termination/errors (existing code) ---
                  case 'session.warning':
                  case 'session.error':
@@ -1072,12 +1161,13 @@ async function stopCall(isCleanupOnly = false) {
     if (!isCleanupOnly && entryIdToSave) {
         console.log(`stopCall requesting save for entry ID: ${entryIdToSave}`);
         try {
-            await saveTranscriptToJournal(entryIdToSave); // Pass the captured ID
+            await saveTranscriptToJournal(entryIdToSave);    // Corrected: Pass entryIdToSave to the function
         } catch (saveError) {
             console.error(`Error during saveTranscriptToJournal called from stopCall:`, saveError);
             // Even if save fails, reset the transcript state here
-            currentCallTranscript = ""; 
-            lastSpeaker = null; 
+            currentCallTranscript = "";
+            lastSpeaker = null;
+            conversationMessages = []; // Clear conversation messages on error
         }
     } else {
         if (isCleanupOnly) {
@@ -1097,17 +1187,43 @@ async function stopCall(isCleanupOnly = false) {
 }
 
 // --- Modified function to accept entry ID as argument ---
-async function saveTranscriptToJournal(entryIdToProcess) { 
-    // Removed: const entryIdToProcess = currentJournalEntryId; 
-
-    // --- MODIFIED CHECK: Check argument and transcript content --- 
+async function saveTranscriptToJournal(entryIdToProcess) {
     if (!entryIdToProcess) {
-        // This case should ideally not be reached if called correctly from stopCall
         console.error("saveTranscriptToJournal called without a valid entryIdToProcess.");
-        return; 
+        return;
     }
-    // Proceed even if transcript is empty, the check is primarily for the ID now.
-    const transcriptToSave = currentCallTranscript || ""; // Ensure we save empty string if null/undefined
+    
+    // Use the structured conversation array for saving
+    // First, generate a clean alternate format that looks like a natural conversation
+    let structuredTranscript = "";
+    if (conversationMessages.length > 0) {
+        console.log("Creating structured transcript from conversation messages:", conversationMessages);
+        conversationMessages.forEach((msg, index) => {
+            const speakerLabel = msg.speaker === "User" ? "Me" : "Actions";
+            structuredTranscript += `${speakerLabel}: ${msg.text}`;
+            // Add appropriate line breaks between messages
+            if (index < conversationMessages.length - 1) {
+                structuredTranscript += "\n\n";
+            }
+        });
+    } else {
+        console.log("No conversation messages to create transcript from");
+        // If no structured messages were captured, check if there's at least some AI content in assistantTranscript
+        if (assistantTranscript && assistantTranscript.trim() !== "") {
+            console.log("Using assistantTranscript as fallback for AI response");
+            // Create a minimal transcript with the user message and AI response
+            structuredTranscript = "Me: Hello?\n\nActions: " + assistantTranscript.trim();
+        }
+    }
+    
+    // If we still have no transcript but have some raw transcript, use that as a last resort
+    if (!structuredTranscript && currentCallTranscript) {
+        console.log("Using raw currentCallTranscript as last resort");
+        structuredTranscript = currentCallTranscript;
+    }
+    
+    // Use the structured transcript if available, otherwise fall back to the existing format
+    const transcriptToSave = structuredTranscript || currentCallTranscript || ""; 
     console.log(`Attempting to save transcript (length: ${transcriptToSave.length}) and process action items for journal entry ID: ${entryIdToProcess}`);
 
     try {
@@ -1116,8 +1232,8 @@ async function saveTranscriptToJournal(entryIdToProcess) {
             .from('journal_entries')
             .update({ 
                 full_transcript: transcriptToSave, // Save transcript as is
-             }) 
-            .eq('id', entryIdToProcess)
+             })
+            .eq('id', entryIdToProcess) // Keep using internal parameter name
             .eq('user_id', currentUser.id)
             .select('id') // Select the id back to confirm
             .single();
