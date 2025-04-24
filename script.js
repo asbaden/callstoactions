@@ -96,40 +96,27 @@ function showCallInProgress() {
   callInProgress.style.display = 'block';
 }
 
-// --- Basic UI Function ---
-function updateUI(user) {
-  currentUser = user;
-  if (user) {
-    // User is logged in
+// --- Updated UI Function ---
+const updateUI = (user) => {
+    currentUser = user;
+    if (user) {
+        // User is logged in
     authSection.style.display = 'none';
     mainContent.style.display = 'block';
     showMorningView(); // Default to morning view
-    loadJournalEntries();
-    loadUserProfile(); // Load profile data including sobriety date
+        loadJournalEntries();
+        loadUserProfile(); // Load profile data including sobriety date
     console.log('UI Updated: User logged in:', user.email);
-  } else {
-    // User is logged out
+    } else {
+        // User is logged out
     authSection.style.display = 'block';
     mainContent.style.display = 'none';
-    if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
-    if (profileStatus) profileStatus.textContent = ''; // Clear profile status
+        if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
+        if (profileStatus) profileStatus.textContent = ''; // Clear profile status
     if (journalEntriesContainer) journalEntriesContainer.innerHTML = ''; // Clear entries
-    console.log('UI Updated: User logged out');
-  }
-}
-
-// --- Hook into UI functions ---
-// Add action items loading to updateUI
-const _originalUpdateUI = updateUI;
-function _extendedUpdateUI(user) {
-  _originalUpdateUI(user);
-  
-  // Load action items when UI is updated and user is logged in
-  if (user) {
-    loadActionItems();
-  }
-}
-updateUI = _extendedUpdateUI;
+        console.log('UI Updated: User logged out');
+    }
+};
 
 // --- Initial Load and Auth Listener ---
 
@@ -214,7 +201,7 @@ async function loadJournalEntries() {
     try {
         const { data: entries, error } = await _supabase
             .from('journal_entries')
-            .select('*, full_transcript, action_items')
+            .select('*, full_transcript, action_items') 
             .order('created_at', { ascending: false }); // Show newest first
 
         if (error) {
@@ -313,19 +300,19 @@ async function loadJournalEntries() {
                     // Format transcript (similar to existing code)
                     let formattedTranscript = "";
                     const lines = entry.full_transcript.split(/\n+/).filter(line => line.trim() !== '');
-
-                    lines.forEach(line => {
-                        const trimmedLine = line.trim();
+            
+                lines.forEach(line => {
+                    const trimmedLine = line.trim();
                         let text = "";
                         let alignmentClass = '';
-
-                        if (trimmedLine.startsWith("Me:")) {
+            
+                    if (trimmedLine.startsWith("Me:")) {
                             text = trimmedLine.substring(3).trim();
                             alignmentClass = 'me-bubble';
-                        } else if (trimmedLine.startsWith("Actions:")) {
+                    } else if (trimmedLine.startsWith("Actions:")) {
                             text = trimmedLine.substring(8).trim();
                             alignmentClass = 'actions-bubble';
-                        } else {
+                    } else {
                             console.warn("Found transcript line without expected prefix:", trimmedLine);
                             text = trimmedLine;
                             alignmentClass = 'actions-bubble';
@@ -337,19 +324,19 @@ async function loadJournalEntries() {
                     });
 
                     entryHTML += `
-                        <div class="journal-transcript" style="display: none;">
+                   <div class="journal-transcript" style="display: none;">
                             ${formattedTranscript || '<p><em>No transcript available</em></p>'}
-                        </div>
-                    `;
-                }
+                    </div>
+                `;
+            }
 
                 entryElement.innerHTML = entryHTML;
                 dateEntries.appendChild(entryElement);
             });
-            
+
             // Add the entries list to the date container
             dateContainer.appendChild(dateEntries);
-            
+
             // Add the date container to the journal entries container
             journalEntriesContainer.appendChild(dateContainer);
         });
@@ -924,7 +911,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                          if (currentSpeaker !== "AI") {
                              currentSpeaker = "AI";
                              currentMessage = textContent;
-                         } else {
+                      } else {
                              // Accumulate the AI message text
                              currentMessage += textContent;
                          }
@@ -943,7 +930,7 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                              
                              // Update raw transcript format as well
                              if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
-                                 currentCallTranscript += '\n';
+                                currentCallTranscript += '\n';
                              }
                              currentCallTranscript += `Actions: ${textContent}`;
                              lastSpeaker = 'Actions';
@@ -988,9 +975,9 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                              assistantTranscript = deltaText;
 
                              // Update raw transcript format - Add prefix ONLY for the first delta
-                             if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
-                                 currentCallTranscript += '\n';
-                             }
+                           if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
+                               currentCallTranscript += '\n';
+                           }
                              currentCallTranscript += `Actions: ${deltaText}`; // Add prefix here
                              lastSpeaker = 'Actions';
                          }
@@ -1001,9 +988,9 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                              currentMessage = deltaText;
                          } else { // Continuation of AI message
                              currentMessage += deltaText;
-                         }
-                     }
-                     break;
+                           }
+                      }
+                      break;
 
                  // --- Handle complete AI speech transcript ---
                  case 'response.audio_transcript.done':
@@ -1037,15 +1024,15 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                          
                          // Update raw transcript format as well
                          if (currentCallTranscript && !currentCallTranscript.endsWith('\n')) {
-                             currentCallTranscript += '\n';
-                         }
+                                currentCallTranscript += '\n';
+                           }
                          currentCallTranscript += `Actions: ${aiText}\n`;
                          lastSpeaker = 'Actions';
                          
                          // Log for debugging
                          console.log("Updated conversationMessages:", conversationMessages);
                          console.log("Updated currentCallTranscript:", currentCallTranscript);
-                     } else {
+                           } else {
                          // If no transcript content was found, log the full message structure for debugging
                          console.log("Could not find transcript content. Full message structure:", JSON.stringify(message));
                      }
@@ -1085,8 +1072,8 @@ async function connectOpenAIWebRTC(ephemeralKey, callType) {
                      assistantTranscript = ""; // Reset live display accumulator
                      currentAssistantTurnDiv = null; // Reset live display div
                      // lastSpeaker remains 'Actions' until user speaks
-                     break;
-
+                      break;
+                 
                  // --- Handle session termination/errors (existing code) ---
                  case 'session.warning':
                  case 'session.error':
@@ -1200,28 +1187,115 @@ function sendDataChannelMessage(messageObject) {
 
 // --- Update Stop Call function for WebRTC ---
 // Add an optional flag to indicate if this is just for cleanup
-const _originalStopCall = stopCall;
-async function _extendedStopCall(isCleanupOnly = false) {
-  await _originalStopCall(isCleanupOnly);
-  
-  // After a call, check if we need to update action items
-  if (!isCleanupOnly && currentCallType === 'morning') {
-    // Reset the processed flag so we load fresh items
-    localStorage.removeItem('morningCallItemsProcessed');
+async function stopCall(isCleanupOnly = false) { 
+    console.log(`stopCall() initiated. Is cleanup only: ${isCleanupOnly}`);
+
+    // Capture the ID before cleanup potentially triggers another stopCall or save clears it
+    const entryIdToSave = currentJournalEntryId;
+    // Only log if we *expect* to save later
+    if (!isCleanupOnly) {
+        console.log(`stopCall: Captured entry ID to potentially save: ${entryIdToSave}`);
+    }
+
+    // --- Perform Cleanup Actions First ---
+    if (peerConnection) {
+        console.log("Closing RTCPeerConnection...");
+        // Unsubscribe event listeners BEFORE closing to prevent race conditions/double calls
+        peerConnection.onconnectionstatechange = null;
+        peerConnection.onicecandidate = null;
+        peerConnection.ontrack = null;
+        peerConnection.onicegatheringstatechange = null;
+        peerConnection.onsignalingstatechange = null;
+        peerConnection.onerror = null;
+        if (dataChannel) {
+            dataChannel.onopen = null;
+            dataChannel.onclose = null;
+            dataChannel.onerror = null;
+            dataChannel.onmessage = null;
+            // dataChannel.close(); // Closing peerConnection should close the channel
+            dataChannel = null; 
+        }
+        peerConnection.close();
+        peerConnection = null;
+    }
+    // Double check dataChannel nullification if peerConnection wasn't open
+    if (dataChannel) {
+        // dataChannel.close(); // Already handled above if peerConnection existed
+        dataChannel = null;
+    }
     
-    // Update with a slight delay to allow database to update
-    setTimeout(() => {
-      loadActionItems();
-    }, 1000);
-  }
+    if (userStream) {
+        console.log("Stopping media stream tracks.");
+        userStream.getTracks().forEach(track => track.stop());
+        userStream = null;
+    }
+    
+    if (remoteAudioElement && remoteAudioElement.parentNode) {
+        // Clean up dynamically added audio element if needed
+        // remoteAudioElement.parentNode.removeChild(remoteAudioElement);
+        // remoteAudioElement = null;
+    } else if (remoteAudioElement) {
+        // Pause and reset srcObject if element wasn't added to DOM or is reused
+         remoteAudioElement.pause();
+         remoteAudioElement.srcObject = null;
+    }
+
+    // Reset other state variables
+    openaiSessionId = null;
+    assistantTranscript = "";
+    currentAssistantTurnDiv = null; // Clear reference to live transcript divs
+    currentUserTurnDiv = null;
+    // Keep currentCallTranscript and lastSpeaker until after potential save
+    
+    // Hide stop call button ONLY if this is a real stop, not cleanup
+    if (!isCleanupOnly && stopCallBtn && stopCallBtn.style.display !== 'none') {
+        console.log("Hiding Stop Call button (normal stop)");
+        stopCallBtn.style.display = 'none';
+    }
+    
+    // Set status only if not already set by connection state change (which should be detached now)
+    // And maybe only if it's a normal stop?
+    if (!isCleanupOnly && callStatus && callStatus.textContent !== 'Call ended.') { 
+         callStatus.textContent = 'Call ended.';
+    }
+    // --- End Cleanup Actions ---
+
+    console.log("stopCall cleanup finished.");
+
+    // --- Attempt to Save Transcript (Only Once, and not if just cleaning up) ---
+    if (!isCleanupOnly && entryIdToSave) {
+        console.log(`stopCall requesting save for entry ID: ${entryIdToSave}`);
+        try {
+            await saveTranscriptToJournal(entryIdToSave);    // Corrected: Pass entryIdToSave to the function
+        } catch (saveError) {
+            console.error(`Error during saveTranscriptToJournal called from stopCall:`, saveError);
+            // Even if save fails, reset the transcript state here
+            currentCallTranscript = ""; 
+            lastSpeaker = null; 
+            conversationMessages = []; // Clear conversation messages on error
+        }
+    } else {
+        if (isCleanupOnly) {
+            console.log("stopCall: Skipping save because isCleanupOnly is true.");
+        } else {
+            console.log("stopCall: No valid entry ID captured, skipping transcript save.");
+        }
+        // Explicitly reset potentially lingering transcript data if no ID to save against or skipping
+        currentCallTranscript = "";
+        lastSpeaker = null;
+    }
+    
+    // --- Final State Reset --- 
+    // Now that saving is attempted/skipped, definitively reset the ID for the next call
+    currentJournalEntryId = null; 
+    console.log("stopCall: Final state reset complete.");
 }
-stopCall = _extendedStopCall;
 
 // --- Modified function to accept entry ID as argument ---
-async function saveTranscriptToJournal(entryIdToProcess) {
+async function saveTranscriptToJournal(entryIdToProcess) { 
     if (!entryIdToProcess) {
         console.error("saveTranscriptToJournal called without a valid entryIdToProcess.");
-        return;
+        return; 
     }
     
     // Use the structured conversation array for saving
@@ -1263,7 +1337,7 @@ async function saveTranscriptToJournal(entryIdToProcess) {
             .from('journal_entries')
             .update({ 
                 full_transcript: transcriptToSave, // Save transcript as is
-             })
+             }) 
             .eq('id', entryIdToProcess) // Keep using internal parameter name
             .eq('user_id', currentUser.id)
             .select('id') // Select the id back to confirm
@@ -1347,9 +1421,9 @@ if (journalEntriesContainer) {
         // Only toggle transcript if clicking on the entry (not a button or action item)
         if (entryItem && !isActionItem && !isDeleteButton) {
             const transcriptDiv = entryItem.querySelector('.journal-transcript');
-            if (transcriptDiv) {
-                // Toggle display
-                const isHidden = transcriptDiv.style.display === 'none';
+                if (transcriptDiv) {
+                    // Toggle display
+                    const isHidden = transcriptDiv.style.display === 'none';
                 transcriptDiv.style.display = isHidden ? 'flex' : 'none';
                 
                 // Toggle active class
@@ -1384,22 +1458,22 @@ if (journalEntriesContainer) {
                         .delete()
                         .eq('id', entryId)
                         .then(({ error: deleteError }) => {
-                            if (deleteError) {
+                    if (deleteError) {
                                 throw deleteError;
-                            }
+                    }
 
-                            console.log(`Successfully deleted entry ID: ${entryId}`);
-                            // Remove the entry element directly from the DOM for immediate feedback
+                    console.log(`Successfully deleted entry ID: ${entryId}`);
+                    // Remove the entry element directly from the DOM for immediate feedback
                             const entryElementToRemove = button.closest('.journal-item');
-                            if (entryElementToRemove) {
-                                entryElementToRemove.remove();
-                            } else {
-                                // Fallback: Reload all entries if element wasn't found
-                                loadJournalEntries(); 
-                            }
+                    if (entryElementToRemove) {
+                        entryElementToRemove.remove();
+                    } else {
+                        // Fallback: Reload all entries if element wasn't found
+                        loadJournalEntries(); 
+                    }
                         })
                         .catch(error => {
-                            console.error(`Error deleting journal entry ID ${entryId}:`, error);
+                    console.error(`Error deleting journal entry ID ${entryId}:`, error);
                             alert(`Failed to delete entry: ${error.message}`);
                             // Re-enable button on error
                             button.disabled = false; 
@@ -1492,7 +1566,7 @@ async function loadUserProfile() {
                 
                 if (profileStatus) profileStatus.textContent = 'Profile loaded.';
             } else {
-                if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
+                 if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
             }
         } else {
             console.log("No profile found for user.");
@@ -1547,95 +1621,60 @@ async function saveUserProfile() {
 
 // --- ATTACH EVENT LISTENERS (AFTER FUNCTIONS ARE DEFINED) ---
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM fully loaded. EMERGENCY DEBUG MODE...');
-
-  // Dump all buttons to the console for debugging
-  console.log('ALL BUTTONS:', document.querySelectorAll('button'));
-  
-  // Add direct onclick attributes to buttons as an emergency fallback
-  const morningCallBtn = document.getElementById('morning-call-button');
-  if (morningCallBtn) {
-    console.log('FOUND morning-call-button:', morningCallBtn);
-    morningCallBtn.setAttribute('onclick', "console.log('Morning call button clicked via onclick'); startCall('morning');");
-  } else {
-    console.error('morning-call-button NOT FOUND');
-  }
-
-  const eveningCallBtn = document.getElementById('evening-call-button');
-  if (eveningCallBtn) {
-    console.log('FOUND evening-call-button:', eveningCallBtn);
-    eveningCallBtn.setAttribute('onclick', "console.log('Evening call button clicked via onclick'); startCall('evening');");
-  } else {
-    console.error('evening-call-button NOT FOUND');
-  }
-
-  const switchToEveningBtn = document.getElementById('switch-to-evening');
-  if (switchToEveningBtn) {
-    console.log('FOUND switch-to-evening:', switchToEveningBtn);
-    switchToEveningBtn.setAttribute('onclick', "console.log('Switch to evening clicked via onclick'); document.getElementById('evening-view').style.display='block'; document.getElementById('morning-view').style.display='none';");
-  } else {
-    console.error('switch-to-evening NOT FOUND');
-  }
-
-  const switchToMorningBtn = document.getElementById('switch-to-morning');
-  if (switchToMorningBtn) {
-    console.log('FOUND switch-to-morning:', switchToMorningBtn);
-    switchToMorningBtn.setAttribute('onclick', "console.log('Switch to morning clicked via onclick'); document.getElementById('morning-view').style.display='block'; document.getElementById('evening-view').style.display='none';");
-  } else {
-    console.error('switch-to-morning NOT FOUND');
-  }
-
-  const historyBtn = document.getElementById('history-btn');
-  if (historyBtn) {
-    console.log('FOUND history-btn:', historyBtn);
-    historyBtn.setAttribute('onclick', "console.log('History button clicked via onclick'); document.getElementById('journal-view').style.display='block'; document.getElementById('morning-view').style.display='none'; document.getElementById('evening-view').style.display='none';");
-  } else {
-    console.error('history-btn NOT FOUND');
-  }
-
-  console.log('Emergency fallbacks added');
-  
-  // Basic UI function
-  const authSection = document.getElementById('auth-section');
-  const mainContent = document.getElementById('main-content');
-  
-  function updateUIBasic(user) {
-    console.log('Basic updateUI called with user:', user?.email);
-    currentUser = user;
+    console.log('DOM fully loaded. Attaching event listeners...');
     
-    if (user) {
-      if (authSection) authSection.style.display = 'none';
-      if (mainContent) mainContent.style.display = 'block';
-      console.log('UI Updated: User logged in');
-      
-      // Find and display morning view
-      const morningView = document.getElementById('morning-view');
-      if (morningView) {
-        morningView.style.display = 'block';
-        console.log('Morning view displayed');
-      }
-    } else {
-      if (authSection) authSection.style.display = 'block';
-      if (mainContent) mainContent.style.display = 'none';
-      console.log('UI Updated: User logged out');
+    // View switching
+    if (switchToEveningBtn) {
+        switchToEveningBtn.addEventListener('click', showEveningView);
     }
-  }
-  
-  // Override updateUI
-  window.updateUI = updateUIBasic;
-  
-  // Check initial auth state
-  console.log('Checking initial auth state...');
-  _supabase.auth.getUser().then(({ data: { user }, error }) => {
-    if (error) {
-      console.error('Error getting initial user:', error);
-      updateUIBasic(null);
-    } else if (user) {
-      console.log('Initial user found:', user.email);
-      updateUIBasic(user);
-    } else {
-      console.log('No initial user found');
-      updateUIBasic(null);
+    
+    if (switchToMorningBtn) {
+        switchToMorningBtn.addEventListener('click', showMorningView);
     }
-  });
+    
+    if (historyBtn) {
+        historyBtn.addEventListener('click', showJournalView);
+    }
+    
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', showProfileView);
+    }
+    
+    if (editDaysBtn) {
+        editDaysBtn.addEventListener('click', showProfileView);
+    }
+    
+    // Profile save button
+    if (saveProfileButton) {
+        saveProfileButton.addEventListener('click', saveUserProfile);
+        console.log("Profile save button listener attached.");
+    }
+    
+    // Call buttons (along with existing listeners)
+    if (morningCallBtn) {
+        morningCallBtn.addEventListener('click', () => {
+            console.log('Morning Call Button Listener EXECUTED!'); 
+            startCall('morning');
+        });
+    }
+
+    if (eveningCallBtn) {
+        eveningCallBtn.addEventListener('click', () => {
+            console.log('Evening Call Button Listener EXECUTED!'); 
+            startCall('evening');
+        });
+    }
+    
+    if (stopCallBtn) {
+        stopCallBtn.addEventListener('click', () => {
+            console.log('Stop Call Button Listener EXECUTED!');
+            stopCall();
+            // After call ends, return to appropriate view based on call type
+            if (currentCallType === 'morning') {
+                showMorningView();
+    } else {
+                showEveningView();
+            }
+        });
+    }
 });
