@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calls To Actions - Recovery Support</title>
+    <title>Calls to Actions - Recovery Support</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
@@ -20,6 +20,10 @@
             </div>
             <button id="history-btn" class="button-text">History</button>
             <button id="settings-btn" class="button-text">Settings</button>
+            <button id="panic-mode-btn" class="panic-button">
+                <span class="material-icons">warning</span>
+                Panic Mode
+            </button>
         </div>
     </header>
 
@@ -36,8 +40,8 @@
     </div>
 
     <div id="main-content" style="display: none;">
-        <!-- Morning/Evening View - Only one visible at a time -->
-        <div id="morning-view" class="container">
+        <!-- Morning Check-in Form View -->
+        <div id="morning-checkin-form" class="container">
             <div class="card">
                 <h2 class="section-title">
                     <span>Recovery Journey</span>
@@ -50,84 +54,295 @@
                     Switch to Evening Check-in
                 </button>
                 
-                <div class="session-card">
-                    <h3 class="section-title">
-                        <div class="icon icon-morning">
-                            <span class="material-icons">wb_sunny</span>
+                <form id="morning-form">
+                    <!-- Gratitude List -->
+                    <div class="form-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">favorite</span>
+                            Gratitude List
+                        </h3>
+                        <div class="input-with-button">
+                            <input type="text" id="gratitude-input" placeholder="I'm grateful for...">
+                            <button type="button" id="add-gratitude" class="add-button">+</button>
                         </div>
-                        Morning Planning Session
-                    </h3>
-                    <p>Let's plan your day and set some positive intentions. Talk to the AI about what you want to accomplish today.</p>
-                    
-                    <div class="call-button-container">
-                        <button id="morning-call-button" class="button button-primary">
-                            <span class="material-icons button-icon">call</span>
-                            Start Morning Call
-                        </button>
+                        <div id="gratitude-items" class="item-list"></div>
                     </div>
-                </div>
+                    
+                    <!-- General Plan -->
+                    <div class="form-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">event_note</span>
+                            General Plan for Today
+                        </h3>
+                        <textarea id="general-plan" placeholder="What's your general plan for today? (Not a detailed schedule)"></textarea>
+                    </div>
+                    
+                    <!-- Current Mood -->
+                    <div class="form-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">mood</span>
+                            Current Mood
+                        </h3>
+                        <div class="mood-buttons">
+                            <button type="button" class="mood-button" data-mood="At peace">At peace</button>
+                            <button type="button" class="mood-button" data-mood="Grateful">Grateful</button>
+                            <button type="button" class="mood-button" data-mood="Anxious">Anxious</button>
+                            <button type="button" class="mood-button" data-mood="Frustrated">Frustrated</button>
+                            <button type="button" class="mood-button" data-mood="Hopeful">Hopeful</button>
+                            <button type="button" class="mood-button" data-mood="Tired">Tired</button>
+                            <button type="button" class="mood-button" data-mood="Energetic">Energetic</button>
+                            <button type="button" class="mood-button" data-mood="Worried">Worried</button>
+                            <button type="button" class="mood-button" data-mood="Content">Content</button>
+                            <button type="button" class="mood-button" data-mood="Overwhelmed">Overwhelmed</button>
+                        </div>
+                        <input type="text" id="custom-mood" placeholder="Or type your own...">
+                        <input type="hidden" id="selected-mood" name="selected-mood">
+                    </div>
+                    
+                    <!-- What to Watch For -->
+                    <div class="form-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">visibility</span>
+                            What to Watch For
+                        </h3>
+                        <div class="input-with-button">
+                            <input type="text" id="watch-for-input" placeholder="Character defect or situation to be mindful of...">
+                            <button type="button" id="add-watch-for" class="add-button">+</button>
+                        </div>
+                        <div id="watch-for-items" class="item-list"></div>
+                    </div>
+                    
+                    <!-- What to Strive For -->
+                    <div class="form-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">star</span>
+                            What to Strive For
+                        </h3>
+                        <div class="input-with-button">
+                            <input type="text" id="strive-for-input" placeholder="Virtue or quality to focus on today...">
+                            <button type="button" id="add-strive-for" class="add-button">+</button>
+                        </div>
+                        <div id="strive-for-items" class="item-list"></div>
+                    </div>
+                    
+                    <button type="submit" id="complete-morning" class="button button-primary">Complete Morning Check-in</button>
+                </form>
             </div>
         </div>
         
-        <div id="evening-view" class="container" style="display: none;">
+        <!-- Morning Check-in View (After completion) -->
+        <div id="morning-checkin-view" class="container" style="display: none;">
             <div class="card">
                 <h2 class="section-title">
-                    <span>Recovery Journey</span>
-                    <span class="section-subtitle" id="recovery-days-count-evening">0 days</span>
+                    <span>Morning Check-in</span>
+                    <span class="section-subtitle" id="view-days-count">0 days</span>
                 </h2>
-                <p id="evening-mantra">Let go and let God.</p>
                 
-                <button id="switch-to-morning" class="switch-button">
-                    <span class="material-icons">wb_sunny</span>
-                    Switch to Morning Planning
-                </button>
+                <div class="view-actions">
+                    <button id="edit-checkin" class="button button-secondary">
+                        <span class="material-icons">edit</span>
+                        Edit Check-in
+                    </button>
+                    <button id="switch-to-evening-completed" class="switch-button">
+                        <span class="material-icons">nights_stay</span>
+                        Switch to Evening Check-in
+                    </button>
+                </div>
                 
-                <div class="session-card">
+                <div class="view-section">
                     <h3 class="section-title">
-                        <div class="icon icon-evening">
-                            <span class="material-icons">nights_stay</span>
-                        </div>
-                        Evening Reflection & 10th Step
+                        <span class="material-icons section-icon">favorite</span>
+                        Gratitude List
                     </h3>
-                    <p>Let's reflect on your day and go through your 10th step. Did you accomplish what you set out to do?</p>
-                    
-                    <div class="call-button-container">
-                        <button id="evening-call-button" class="button button-primary">
-                            <span class="material-icons button-icon">call</span>
-                            Start Evening Call
-                        </button>
-                    </div>
+                    <div id="view-gratitude-list" class="view-list"></div>
+                </div>
+                
+                <div class="view-section">
+                    <h3 class="section-title">
+                        <span class="material-icons section-icon">event_note</span>
+                        General Plan
+                    </h3>
+                    <div id="view-general-plan" class="view-text"></div>
+                </div>
+                
+                <div class="view-section">
+                    <h3 class="section-title">
+                        <span class="material-icons section-icon">mood</span>
+                        Current Mood
+                    </h3>
+                    <div id="view-current-mood" class="view-text"></div>
+                </div>
+                
+                <div class="view-section">
+                    <h3 class="section-title">
+                        <span class="material-icons section-icon">visibility</span>
+                        What to Watch For
+                    </h3>
+                    <div id="view-watch-for" class="view-list"></div>
+                </div>
+                
+                <div class="view-section">
+                    <h3 class="section-title">
+                        <span class="material-icons section-icon">star</span>
+                        What to Strive For
+                    </h3>
+                    <div id="view-strive-for" class="view-list"></div>
                 </div>
             </div>
         </div>
         
-        <!-- Call in progress view -->
-        <div id="call-in-progress" class="container" style="display: none;">
+        <!-- Evening Review View -->
+        <div id="evening-review" class="container" style="display: none;">
             <div class="card">
-                <div id="call-header" class="section-title">
-                    <button id="stop-call-button" class="button button-primary">
-                        <span class="material-icons button-icon">call_end</span>
-                        End Call
-                    </button>
+                <div class="tabs">
+                    <button id="daily-review-tab" class="tab-button active">Daily Review</button>
+                    <button id="tenth-step-tab" class="tab-button">10th Step</button>
                 </div>
-                <div id="call-status"></div>
+                
+                <!-- Daily Review Tab Content -->
+                <div id="daily-review-content" class="tab-content">
+                    <h3>Morning Check-in</h3>
+                    
+                    <div class="view-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">favorite</span>
+                            Gratitude List
+                        </h3>
+                        <div id="review-gratitude-list" class="view-list"></div>
+                    </div>
+                    
+                    <div class="view-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">event_note</span>
+                            General Plan
+                        </h3>
+                        <div id="review-general-plan" class="view-text"></div>
+                    </div>
+                    
+                    <div class="view-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">mood</span>
+                            Morning Mood
+                        </h3>
+                        <div id="review-morning-mood" class="view-text"></div>
+                    </div>
+                    
+                    <div class="view-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">visibility</span>
+                            What to Watch For
+                        </h3>
+                        <div id="review-watch-for" class="view-list"></div>
+                    </div>
+                    
+                    <div class="view-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">star</span>
+                            What to Strive For
+                        </h3>
+                        <div id="review-strive-for" class="view-list"></div>
+                    </div>
+                    
+                    <div class="view-section">
+                        <h3 class="section-title">
+                            <span class="material-icons section-icon">check_circle</span>
+                            Today's Action Items
+                        </h3>
+                        <div id="action-items-container">
+                            <p class="empty-message">No action items available. Add some items during your morning check-in.</p>
+                            <!-- Action items will be added here dynamically with checkboxes -->
+                            <div id="action-items-list" class="action-items"></div>
+                        </div>
+                    </div>
+                    
+                    <button id="continue-tenth-step" class="button button-primary">Continue to 10th Step</button>
+                </div>
+                
+                <!-- 10th Step Tab Content -->
+                <div id="tenth-step-content" class="tab-content" style="display: none;">
+                    <h3 class="section-title">
+                        <span class="material-icons section-icon">menu_book</span>
+                        10th Step Inventory
+                    </h3>
+                    <p class="inventory-quote">"Continued to take personal inventory and when we were wrong promptly admitted it."</p>
+                    
+                    <form id="tenth-step-form">
+                        <div class="inventory-question">
+                            <p>Did I harm anyone today?</p>
+                            <div class="toggle-buttons">
+                                <button type="button" class="toggle-button yes" data-question="harm_anyone" data-value="yes">Yes</button>
+                                <button type="button" class="toggle-button no active" data-question="harm_anyone" data-value="no">No</button>
+                            </div>
+                            <div class="reflection-area" id="harm-reflection-area" style="display: none;">
+                                <p>Reflection notes:</p>
+                                <textarea id="harm-reflection" placeholder="Write your thoughts here..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="inventory-question">
+                            <p>Did I experience resentment today?</p>
+                            <div class="toggle-buttons">
+                                <button type="button" class="toggle-button yes" data-question="resentment" data-value="yes">Yes</button>
+                                <button type="button" class="toggle-button no active" data-question="resentment" data-value="no">No</button>
+                            </div>
+                            <div class="reflection-area" id="resentment-reflection-area" style="display: none;">
+                                <p>Reflection notes:</p>
+                                <textarea id="resentment-reflection" placeholder="Write your thoughts here..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="inventory-question">
+                            <p>Did I experience fear or anxiety today?</p>
+                            <div class="toggle-buttons">
+                                <button type="button" class="toggle-button yes" data-question="fear_anxiety" data-value="yes">Yes</button>
+                                <button type="button" class="toggle-button no active" data-question="fear_anxiety" data-value="no">No</button>
+                            </div>
+                            <div class="reflection-area" id="fear-reflection-area" style="display: none;">
+                                <p>Reflection notes:</p>
+                                <textarea id="fear-reflection" placeholder="Write your thoughts here..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="inventory-question">
+                            <p>Did I act selfishly today?</p>
+                            <div class="toggle-buttons">
+                                <button type="button" class="toggle-button yes" data-question="selfish" data-value="yes">Yes</button>
+                                <button type="button" class="toggle-button no active" data-question="selfish" data-value="no">No</button>
+                            </div>
+                            <div class="reflection-area" id="selfish-reflection-area" style="display: none;">
+                                <p>Reflection notes:</p>
+                                <textarea id="selfish-reflection" placeholder="Write your thoughts here..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="inventory-question">
+                            <p>Do I owe anyone an apology?</p>
+                            <div class="toggle-buttons">
+                                <button type="button" class="toggle-button yes" data-question="apology" data-value="yes">Yes</button>
+                                <button type="button" class="toggle-button no active" data-question="apology" data-value="no">No</button>
+                            </div>
+                            <div class="reflection-area" id="apology-reflection-area" style="display: none;">
+                                <p>Reflection notes:</p>
+                                <textarea id="apology-reflection" placeholder="Write your thoughts here..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" id="complete-tenth-step" class="button button-primary">Complete 10th Step</button>
+                    </form>
+                </div>
             </div>
         </div>
         
         <!-- Journal View -->
         <div id="journal-view" class="container" style="display: none;">
             <div class="card">
-                <h2 class="section-title">
-                    <div class="icon">
-                        <span class="material-icons">book</span>
-                    </div>
-                    Recovery Journal
+                <h2 class="journal-title">
+                    <span class="journal-icon">📅</span> Recovery Journal
                 </h2>
-                <p>Your journey, one day at a time</p>
-                
-                <ul id="journal-entries" class="journal-list">
-                    <!-- Journal entries will be loaded here -->
-                </ul>
+                <p class="journal-tagline">Your journey, one day at a time</p>
+                <div id="journalList" class="journal-list">
+                    <!-- Journal entries will be dynamically added here -->
+                </div>
             </div>
         </div>
         
@@ -142,6 +357,24 @@
                     <button id="save-profile-button" class="button button-primary">Save Date</button>
                     <p id="profile-status"></p>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Panic Mode View -->
+        <div id="panic-mode-view" class="container" style="display: none;">
+            <div class="card panic-card">
+                <h2 class="section-title">Panic Mode</h2>
+                <p>Take a deep breath. You're not alone.</p>
+                
+                <div class="panic-buttons">
+                    <button id="start-panic-call" class="button button-panic">
+                        <span class="material-icons">call</span>
+                        Speak with Actions
+                    </button>
+                    <button id="exit-panic-mode" class="button button-secondary">Exit Panic Mode</button>
+                </div>
+                
+                <div id="panic-call-status" style="display: none;"></div>
             </div>
         </div>
     </div>

@@ -1,0 +1,1147 @@
+// Ensure config.js is loaded first and contains SUPABASE_URL and SUPABASE_ANON_KEY
+
+// Initialize Supabase client using the config object
+const { createClient } = supabase;
+const _supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+console.log('Supabase client instance:', _supabase);
+
+console.log('Supabase Initialized');
+
+// --- DOM Elements ---
+// Auth elements
+const loginButton = document.getElementById('login-button');
+const logoutButton = document.getElementById('logout-button');
+const authSection = document.getElementById('auth-section');
+const mainContent = document.getElementById('main-content');
+
+// Header elements
+const daysCount = document.getElementById('days-count');
+const editDaysBtn = document.getElementById('edit-days-btn');
+const historyBtn = document.getElementById('history-btn');
+const settingsBtn = document.getElementById('settings-btn');
+const panicModeBtn = document.getElementById('panic-mode-btn');
+
+// Main views
+const morningCheckinForm = document.getElementById('morning-checkin-form');
+const morningCheckinView = document.getElementById('morning-checkin-view');
+const eveningReview = document.getElementById('evening-review');
+const journalView = document.getElementById('journal-view');
+const profileView = document.getElementById('profile-view');
+const panicModeView = document.getElementById('panic-mode-view');
+
+// Morning form elements
+const morningForm = document.getElementById('morning-form');
+const gratitudeInput = document.getElementById('gratitude-input');
+const addGratitudeBtn = document.getElementById('add-gratitude');
+const gratitudeItems = document.getElementById('gratitude-items');
+const generalPlan = document.getElementById('general-plan');
+const moodButtons = document.querySelectorAll('.mood-button');
+const customMood = document.getElementById('custom-mood');
+const selectedMood = document.getElementById('selected-mood');
+const watchForInput = document.getElementById('watch-for-input');
+const addWatchForBtn = document.getElementById('add-watch-for');
+const watchForItems = document.getElementById('watch-for-items');
+const striveForInput = document.getElementById('strive-for-input');
+const addStriveForBtn = document.getElementById('add-strive-for');
+const striveForItems = document.getElementById('strive-for-items');
+const completeMorningBtn = document.getElementById('complete-morning');
+
+// View switching buttons
+const switchToEveningBtn = document.getElementById('switch-to-evening');
+const switchToEveningCompletedBtn = document.getElementById('switch-to-evening-completed');
+const editCheckinBtn = document.getElementById('edit-checkin');
+
+// Evening review elements
+const dailyReviewTab = document.getElementById('daily-review-tab');
+const tenthStepTab = document.getElementById('tenth-step-tab');
+const dailyReviewContent = document.getElementById('daily-review-content');
+const tenthStepContent = document.getElementById('tenth-step-content');
+const continueToTenthStep = document.getElementById('continue-tenth-step');
+const tenthStepForm = document.getElementById('tenth-step-form');
+const completeTenthStepBtn = document.getElementById('complete-tenth-step');
+
+// Toggle buttons
+const toggleButtons = document.querySelectorAll('.toggle-button');
+
+// Panic mode elements
+const startPanicCallBtn = document.getElementById('start-panic-call');
+const exitPanicModeBtn = document.getElementById('exit-panic-mode');
+
+// Profile elements
+const sobrietyDateInput = document.getElementById('sobriety-date');
+const saveProfileButton = document.getElementById('save-profile-button');
+const profileStatus = document.getElementById('profile-status');
+
+// Journal elements
+const journalEntriesContainer = document.getElementById('journal-entries');
+
+// --- Global State Variables ---
+let currentUser = null;
+let userProfile = null;
+let currentMorningCheckinId = null;
+let currentEveningReviewId = null;
+let todaysMorningCheckin = null;
+
+// For panic mode
+let panicCallActive = false;
+let panicTranscript = "";
+
+// --- Initialize Current Date ---
+const today = new Date();
+const formattedDate = today.toLocaleDateString('en-US', { 
+  year: 'numeric', 
+  month: 'long', 
+  day: 'numeric' 
+});
+
+// --- Auth State Management ---
+const updateUI = (user) => {
+  currentUser = user;
+  if (user) {
+    // User is logged in
+    authSection.style.display = 'none';
+    mainContent.style.display = 'block';
+    checkTodaysMorningCheckin(); // Check if user has completed morning check-in
+    loadUserProfile(); // Load profile data including sobriety date
+    console.log('UI Updated: User logged in:', user.email);
+  } else {
+    // User is logged out
+    authSection.style.display = 'block';
+    mainContent.style.display = 'none';
+    if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
+    if (profileStatus) profileStatus.textContent = ''; // Clear profile status
+    console.log('UI Updated: User logged out');
+  }
+};
+
+// Listen for authentication state changes
+console.log('Setting up onAuthStateChange listener...');
+const { data: { subscription } } = _supabase.auth.onAuthStateChange((event, session) => {
+  console.log(`onAuthStateChange event: ${event}`, session);
+  if (event === 'SIGNED_IN' && session) {
+    console.log('Session details from SIGNED_IN event:', session);
+    _supabase.auth.getUser().then(({ data: { user }, error }) => {
+      if (error) {
+        console.error('Error confirming user after SIGNED_IN event:', error);
+        _supabase.auth.signOut(); 
+      } else if (user) {
+        console.log('User confirmed after SIGNED_IN event:', user);
+        updateUI(user);
+      } else {
+        console.log('getUser() returned no user after SIGNED_IN');
+      }
+    });
+  } else if (event === 'SIGNED_OUT') {
+    updateUI(null);
+  } else if (event === 'INITIAL_SESSION') {
+    updateUI(session?.user ?? null);
+  }
+});
+
+// --- View Management Functions ---
+function showMorningForm() {
+  morningCheckinForm.style.display = 'block';
+  morningCheckinView.style.display = 'none';
+  eveningReview.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  panicModeView.style.display = 'none';
+}
+
+function showMorningView() {
+  morningCheckinForm.style.display = 'none';
+  morningCheckinView.style.display = 'block';
+  eveningReview.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  panicModeView.style.display = 'none';
+}
+
+function showEveningReview() {
+  morningCheckinForm.style.display = 'none';
+  morningCheckinView.style.display = 'none';
+  eveningReview.style.display = 'block';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  panicModeView.style.display = 'none';
+  loadDailyReviewData();
+}
+
+function showJournalView() {
+  morningCheckinForm.style.display = 'none';
+  morningCheckinView.style.display = 'none';
+  eveningReview.style.display = 'none';
+  journalView.style.display = 'block';
+  profileView.style.display = 'none';
+  panicModeView.style.display = 'none';
+  loadJournalEntries();
+}
+
+function showProfileView() {
+  morningCheckinForm.style.display = 'none';
+  morningCheckinView.style.display = 'none';
+  eveningReview.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'block';
+  panicModeView.style.display = 'none';
+}
+
+function showPanicMode() {
+  morningCheckinForm.style.display = 'none';
+  morningCheckinView.style.display = 'none';
+  eveningReview.style.display = 'none';
+  journalView.style.display = 'none';
+  profileView.style.display = 'none';
+  panicModeView.style.display = 'block';
+}
+
+// --- Switching Between Daily Review and 10th Step Tabs ---
+function showDailyReviewTab() {
+  dailyReviewTab.classList.add('active');
+  tenthStepTab.classList.remove('active');
+  dailyReviewContent.style.display = 'block';
+  tenthStepContent.style.display = 'none';
+}
+
+function showTenthStepTab() {
+  dailyReviewTab.classList.remove('active');
+  tenthStepTab.classList.add('active');
+  dailyReviewContent.style.display = 'none';
+  tenthStepContent.style.display = 'block';
+}
+
+// --- Check for Today's Morning Check-in ---
+async function checkTodaysMorningCheckin() {
+  if (!currentUser) return;
+  
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
+    const { data, error } = await _supabase
+      .from('daily_check_ins')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .gte('created_at', todayStart.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+      
+    if (error) throw error;
+    
+    if (data) {
+      // User has already completed a check-in today
+      todaysMorningCheckin = data;
+      currentMorningCheckinId = data.id;
+      displayCompletedCheckin(data);
+      showMorningView();
+    } else {
+      // No check-in today, show the form
+      resetMorningForm();
+      showMorningForm();
+    }
+  } catch (error) {
+    console.error('Error checking for today\'s check-in:', error);
+    showMorningForm(); // Default to showing the form on error
+  }
+}
+
+// --- Morning Check-in Form Functionality ---
+// Add gratitude item
+function addGratitudeItem() {
+  const gratitudeText = gratitudeInput.value.trim();
+  if (!gratitudeText) return;
+  
+  const itemElement = document.createElement('div');
+  itemElement.className = 'list-item';
+  itemElement.innerHTML = `
+    <span class="list-item-text">${gratitudeText}</span>
+    <button class="remove-item" data-type="gratitude">×</button>
+  `;
+  gratitudeItems.appendChild(itemElement);
+  gratitudeInput.value = '';
+  gratitudeInput.focus();
+}
+
+// Add watch-for item
+function addWatchForItem() {
+  const watchForText = watchForInput.value.trim();
+  if (!watchForText) return;
+  
+  const itemElement = document.createElement('div');
+  itemElement.className = 'list-item';
+  itemElement.innerHTML = `
+    <span class="list-item-text">${watchForText}</span>
+    <button class="remove-item" data-type="watch-for">×</button>
+  `;
+  watchForItems.appendChild(itemElement);
+  watchForInput.value = '';
+  watchForInput.focus();
+}
+
+// Add strive-for item
+function addStriveForItem() {
+  const striveForText = striveForInput.value.trim();
+  if (!striveForText) return;
+  
+  const itemElement = document.createElement('div');
+  itemElement.className = 'list-item';
+  itemElement.innerHTML = `
+    <span class="list-item-text">${striveForText}</span>
+    <button class="remove-item" data-type="strive-for">×</button>
+  `;
+  striveForItems.appendChild(itemElement);
+  striveForInput.value = '';
+  striveForInput.focus();
+}
+
+// Reset morning form
+function resetMorningForm() {
+  gratitudeItems.innerHTML = '';
+  generalPlan.value = '';
+  moodButtons.forEach(btn => btn.classList.remove('selected'));
+  selectedMood.value = '';
+  customMood.value = '';
+  watchForItems.innerHTML = '';
+  striveForItems.innerHTML = '';
+}
+
+// Handle mood selection
+function handleMoodSelection(event) {
+  const button = event.target;
+  const mood = button.dataset.mood;
+  
+  // Clear previous selection
+  moodButtons.forEach(btn => btn.classList.remove('selected'));
+  
+  // Apply new selection
+  button.classList.add('selected');
+  selectedMood.value = mood;
+  customMood.value = '';
+}
+
+// Handle custom mood input
+function handleCustomMood() {
+  if (customMood.value) {
+    moodButtons.forEach(btn => btn.classList.remove('selected'));
+    selectedMood.value = customMood.value;
+  }
+}
+
+// Submit morning check-in
+async function submitMorningCheckin(event) {
+  event.preventDefault();
+  
+  // Collect gratitude items
+  const gratitudeList = [];
+  gratitudeItems.querySelectorAll('.list-item-text').forEach(item => {
+    gratitudeList.push(item.textContent);
+  });
+  
+  // Get general plan
+  const generalPlanText = generalPlan.value.trim();
+  
+  // Get mood
+  const mood = selectedMood.value || customMood.value || 'Not specified';
+  
+  // Collect watch-for items
+  const watchForList = [];
+  watchForItems.querySelectorAll('.list-item-text').forEach(item => {
+    watchForList.push(item.textContent);
+  });
+  
+  // Collect strive-for items
+  const striveForList = [];
+  striveForItems.querySelectorAll('.list-item-text').forEach(item => {
+    striveForList.push(item.textContent);
+  });
+  
+  try {
+    const { data, error } = await _supabase
+      .from('daily_check_ins')
+      .insert({
+        user_id: currentUser.id,
+        date: today.toISOString().split('T')[0],
+        gratitude_list: gratitudeList,
+        general_plan: generalPlanText,
+        current_mood: mood,
+        watch_for_items: watchForList,
+        strive_for_items: striveForList
+      })
+      .select()
+      .single();
+      
+    if (error) throw error;
+    
+    console.log('Morning check-in saved:', data);
+    todaysMorningCheckin = data;
+    currentMorningCheckinId = data.id;
+    displayCompletedCheckin(data);
+    showMorningView();
+    
+  } catch (error) {
+    console.error('Error saving morning check-in:', error);
+    alert('There was an error saving your check-in. Please try again.');
+  }
+}
+
+// --- Display Completed Check-in ---
+function displayCompletedCheckin(checkin) {
+  // Populate the view-only sections
+  const viewGratitudeList = document.getElementById('view-gratitude-list');
+  const viewGeneralPlan = document.getElementById('view-general-plan');
+  const viewCurrentMood = document.getElementById('view-current-mood');
+  const viewWatchFor = document.getElementById('view-watch-for');
+  const viewStriveFor = document.getElementById('view-strive-for');
+  
+  // Clear previous content
+  viewGratitudeList.innerHTML = '';
+  viewGeneralPlan.textContent = '';
+  viewCurrentMood.textContent = '';
+  viewWatchFor.innerHTML = '';
+  viewStriveFor.innerHTML = '';
+  
+  // Populate gratitude list
+  if (checkin.gratitude_list && checkin.gratitude_list.length > 0) {
+    checkin.gratitude_list.forEach(item => {
+      const itemElement = document.createElement('div');
+      itemElement.className = 'list-item';
+      itemElement.innerHTML = `<span class="list-item-text">${item}</span>`;
+      viewGratitudeList.appendChild(itemElement);
+    });
+  } else {
+    viewGratitudeList.innerHTML = '<p class="empty-message">No gratitude items added.</p>';
+  }
+  
+  // Populate general plan
+  viewGeneralPlan.textContent = checkin.general_plan || 'No general plan specified.';
+  
+  // Populate mood
+  viewCurrentMood.textContent = checkin.current_mood || 'Not specified';
+  
+  // Populate watch-for items
+  if (checkin.watch_for_items && checkin.watch_for_items.length > 0) {
+    checkin.watch_for_items.forEach(item => {
+      const itemElement = document.createElement('div');
+      itemElement.className = 'list-item';
+      itemElement.innerHTML = `<span class="list-item-text">${item}</span>`;
+      viewWatchFor.appendChild(itemElement);
+    });
+  } else {
+    viewWatchFor.innerHTML = '<p class="empty-message">No watch-for items added.</p>';
+  }
+  
+  // Populate strive-for items
+  if (checkin.strive_for_items && checkin.strive_for_items.length > 0) {
+    checkin.strive_for_items.forEach(item => {
+      const itemElement = document.createElement('div');
+      itemElement.className = 'list-item';
+      itemElement.innerHTML = `<span class="list-item-text">${item}</span>`;
+      viewStriveFor.appendChild(itemElement);
+    });
+  } else {
+    viewStriveFor.innerHTML = '<p class="empty-message">No strive-for items added.</p>';
+  }
+}
+
+// --- Load Daily Review Data ---
+function loadDailyReviewData() {
+  if (!todaysMorningCheckin) {
+    console.error('No morning check-in data available for review');
+    return;
+  }
+  
+  // Populate the review sections
+  const reviewGratitudeList = document.getElementById('review-gratitude-list');
+  const reviewGeneralPlan = document.getElementById('review-general-plan');
+  const reviewMorningMood = document.getElementById('review-morning-mood');
+  const reviewWatchFor = document.getElementById('review-watch-for');
+  const reviewStriveFor = document.getElementById('review-strive-for');
+  const actionItemsList = document.getElementById('action-items-list');
+  const actionItemsContainer = document.getElementById('action-items-container');
+  const emptyMessage = actionItemsContainer.querySelector('.empty-message');
+  
+  // Clear previous content
+  reviewGratitudeList.innerHTML = '';
+  reviewGeneralPlan.textContent = '';
+  reviewMorningMood.textContent = '';
+  reviewWatchFor.innerHTML = '';
+  reviewStriveFor.innerHTML = '';
+  actionItemsList.innerHTML = '';
+  
+  // Populate gratitude list
+  if (todaysMorningCheckin.gratitude_list && todaysMorningCheckin.gratitude_list.length > 0) {
+    todaysMorningCheckin.gratitude_list.forEach(item => {
+      const itemElement = document.createElement('div');
+      itemElement.className = 'list-item';
+      itemElement.innerHTML = `<span class="list-item-text">${item}</span>`;
+      reviewGratitudeList.appendChild(itemElement);
+    });
+  } else {
+    reviewGratitudeList.innerHTML = '<p class="empty-message">No gratitude items added.</p>';
+  }
+  
+  // Populate general plan
+  reviewGeneralPlan.textContent = todaysMorningCheckin.general_plan || 'No general plan specified.';
+  
+  // Populate mood
+  reviewMorningMood.textContent = todaysMorningCheckin.current_mood || 'Not specified';
+  
+  // Populate watch-for items
+  if (todaysMorningCheckin.watch_for_items && todaysMorningCheckin.watch_for_items.length > 0) {
+    todaysMorningCheckin.watch_for_items.forEach(item => {
+      const itemElement = document.createElement('div');
+      itemElement.className = 'list-item';
+      itemElement.innerHTML = `<span class="list-item-text">${item}</span>`;
+      reviewWatchFor.appendChild(itemElement);
+    });
+  } else {
+    reviewWatchFor.innerHTML = '<p class="empty-message">No watch-for items added.</p>';
+  }
+  
+  // Populate strive-for items
+  if (todaysMorningCheckin.strive_for_items && todaysMorningCheckin.strive_for_items.length > 0) {
+    // Show action items for completion tracking
+    if (emptyMessage) emptyMessage.style.display = 'none';
+    
+    todaysMorningCheckin.strive_for_items.forEach((item, index) => {
+      // For action items list
+      const itemElement = document.createElement('div');
+      itemElement.className = 'list-item';
+      itemElement.innerHTML = `<span class="list-item-text">${item}</span>`;
+      reviewStriveFor.appendChild(itemElement);
+      
+      // For completion tracking
+      const actionItem = document.createElement('div');
+      actionItem.className = 'action-item';
+      actionItem.innerHTML = `
+        <input type="checkbox" id="action-${index}" class="action-checkbox">
+        <label for="action-${index}">${item}</label>
+      `;
+      actionItemsList.appendChild(actionItem);
+    });
+  } else {
+    reviewStriveFor.innerHTML = '<p class="empty-message">No strive-for items added.</p>';
+    // Keep the empty message for action items
+    if (emptyMessage) emptyMessage.style.display = 'block';
+  }
+  
+  // Start on the Daily Review tab
+  showDailyReviewTab();
+}
+
+// --- Toggle Buttons for 10th Step ---
+function handleToggleButton(event) {
+  const button = event.target;
+  if (!button.classList.contains('toggle-button')) return;
+  
+  const question = button.dataset.question;
+  const value = button.dataset.value;
+  const isYes = value === 'yes';
+  
+  // Find the other button in the same group
+  const parentDiv = button.closest('.toggle-buttons');
+  const siblingButton = isYes 
+    ? parentDiv.querySelector('.toggle-button.no') 
+    : parentDiv.querySelector('.toggle-button.yes');
+  
+  // Update active state
+  button.classList.add('active');
+  siblingButton.classList.remove('active');
+  
+  // Show/hide reflection area
+  const reflectionAreaId = `${question}-reflection-area`;
+  const reflectionArea = document.getElementById(reflectionAreaId) || 
+                          document.getElementById(`${question.split('_')[0]}-reflection-area`);
+  
+  if (reflectionArea) {
+    reflectionArea.style.display = isYes ? 'block' : 'none';
+  }
+}
+
+// --- Submit Evening Review ---
+async function submitEveningReview(event) {
+  event.preventDefault();
+  
+  if (!currentMorningCheckinId) {
+    console.error('No morning check-in ID found');
+    alert('Please complete a morning check-in first.');
+    return;
+  }
+  
+  // Collect completed action items
+  const completedActions = [];
+  document.querySelectorAll('.action-checkbox:checked').forEach((checkbox, index) => {
+    const label = checkbox.nextElementSibling.textContent;
+    completedActions.push(label);
+  });
+  
+  // Collect 10th step responses
+  const tenthStepData = {};
+  const questions = ['harm_anyone', 'resentment', 'fear_anxiety', 'selfish', 'apology'];
+  
+  questions.forEach(question => {
+    const yesButton = document.querySelector(`.toggle-button.yes[data-question="${question}"]`);
+    const isYes = yesButton && yesButton.classList.contains('active');
+    
+    // Get reflection text if answered yes
+    let reflectionText = '';
+    if (isYes) {
+      const reflectionId = `${question}-reflection` || `${question.split('_')[0]}-reflection`;
+      const reflectionTextarea = document.getElementById(reflectionId);
+      reflectionText = reflectionTextarea ? reflectionTextarea.value.trim() : '';
+    }
+    
+    tenthStepData[question] = {
+      answer: isYes,
+      reflection: isYes ? reflectionText : null
+    };
+  });
+  
+  try {
+    const { data, error } = await _supabase
+      .from('evening_reviews')
+      .insert({
+        user_id: currentUser.id,
+        daily_check_in_id: currentMorningCheckinId,
+        date: today.toISOString().split('T')[0],
+        completed_actions: completedActions,
+        tenth_step: tenthStepData
+      })
+      .select()
+      .single();
+      
+    if (error) throw error;
+    
+    console.log('Evening review saved:', data);
+    currentEveningReviewId = data.id;
+    
+    // Show completion message or redirect
+    alert('Your evening review has been saved successfully!');
+    showJournalView(); // Redirect to journal view
+    
+  } catch (error) {
+    console.error('Error saving evening review:', error);
+    alert('There was an error saving your evening review. Please try again.');
+  }
+}
+
+// --- Panic Mode Functions ---
+async function startPanicCall() {
+  if (panicCallActive) return;
+  
+  panicCallActive = true;
+  panicTranscript = "";
+  const panicCallStatus = document.getElementById('panic-call-status');
+  
+  if (panicCallStatus) {
+    panicCallStatus.style.display = 'block';
+    panicCallStatus.innerHTML = '<p>Connecting to emergency support...</p>';
+    
+    // In a real implementation, this would connect to your panic call service
+    // For now, we'll just simulate with a timeout
+    setTimeout(() => {
+      panicCallStatus.innerHTML += '<p>Emergency support connected. Please describe your situation.</p>';
+      
+      // Simulate ending the call after some time
+      setTimeout(async () => {
+        panicCallStatus.innerHTML += '<p>Call ended. Remember that you are not alone.</p>';
+        panicCallActive = false;
+        
+        // Save panic session to database
+        try {
+          const { data, error } = await _supabase
+            .from('panic_sessions')
+            .insert({
+              user_id: currentUser.id,
+              created_at: new Date().toISOString(),
+              transcript: "Emergency support connected. User described their situation."
+            })
+            .select()
+            .single();
+            
+          console.log('Panic session saved:', data);
+        } catch (err) {
+          console.error('Error saving panic session:', err);
+        }
+      }, 10000);
+    }, 3000);
+  }
+}
+
+function exitPanicMode() {
+  if (panicCallActive) {
+    if (!confirm('Are you sure you want to end the emergency call?')) {
+      return;
+    }
+    panicCallActive = false;
+  }
+  
+  // Return to previous view or default to journal
+  showJournalView();
+}
+
+// --- Load User Profile ---
+async function loadUserProfile() {
+  if (!currentUser) return;
+
+  console.log("Loading user profile...");
+  if (profileStatus) profileStatus.textContent = 'Loading profile...';
+  if (sobrietyDateInput) sobrietyDateInput.value = ''; 
+  userProfile = null;
+
+  try {
+    const { data, error, status } = await _supabase
+      .from('profiles')
+      .select(`sobriety_date`)
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+
+    if (error && status !== 406) {
+      throw error;
+    }
+
+    if (data) {
+      console.log("Profile data received:", data);
+      userProfile = data;
+      
+      if (data.sobriety_date) {
+        if (sobrietyDateInput) {
+          sobrietyDateInput.value = data.sobriety_date;
+        }
+        
+        // Calculate days sober
+        const sobrietyDate = new Date(data.sobriety_date);
+        const today = new Date();
+        sobrietyDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+
+        if (!isNaN(sobrietyDate)) {
+          const diffTime = Math.abs(today - sobrietyDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const daysText = `${diffDays} days`;
+          
+          // Update all day counters
+          if (daysCount) daysCount.textContent = daysText;
+          document.querySelectorAll('[id$="days-count"]').forEach(el => {
+            if (el) el.textContent = daysText;
+          });
+        }
+        
+        if (profileStatus) profileStatus.textContent = 'Profile loaded.';
+      } else {
+        if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
+      }
+    } else {
+      console.log("No profile found for user.");
+      if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
+    }
+  } catch (error) {
+    console.error('Error loading user profile:', error);
+    if (profileStatus) profileStatus.textContent = 'Error loading profile.';
+    userProfile = null;
+  }
+}
+
+// --- Save User Profile ---
+async function saveUserProfile() {
+  if (!currentUser || !sobrietyDateInput) return;
+
+  const sobrietyDate = sobrietyDateInput.value;
+  if (!sobrietyDate || isNaN(new Date(sobrietyDate))) {
+    if(profileStatus) profileStatus.textContent = 'Please enter a valid date.';
+    return;
+  }
+
+  console.log(`Saving sobriety date: ${sobrietyDate} for user: ${currentUser.id}`);
+  if(profileStatus) profileStatus.textContent = 'Saving...';
+
+  try {
+    const { error } = await _supabase
+      .from('profiles')
+      .upsert({ 
+        user_id: currentUser.id,
+        sobriety_date: sobrietyDate,
+        updated_at: new Date()
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    console.log("Profile saved successfully.");
+    if(profileStatus) profileStatus.textContent = 'Date saved successfully!';
+    await loadUserProfile(); 
+
+  } catch (error) {
+    console.error('Error saving user profile:', error);
+    if(profileStatus) profileStatus.textContent = 'Error saving date.';
+  }
+}
+
+// --- Journal Entries ---
+async function loadJournalEntries() {
+  if (!currentUser) {
+    console.log('loadJournalEntries called, but no user logged in.');
+    journalEntriesContainer.innerHTML = '';
+    return;
+  }
+
+  console.log('Loading journal entries for user:', currentUser.id);
+  journalEntriesContainer.innerHTML = '<p>Loading entries...</p>';
+
+  try {
+    // Get both morning check-ins and evening reviews
+    const { data: morningData, error: morningError } = await _supabase
+      .from('daily_check_ins')
+      .select('*, evening_reviews(id, completed_actions, tenth_step)')
+      .order('date', { ascending: false });
+
+    if (morningError) throw morningError;
+
+    if (!morningData || morningData.length === 0) {
+      journalEntriesContainer.innerHTML = '<p>No journal entries found.</p>';
+      return;
+    }
+
+    // Group entries by date
+    const entriesByDate = {};
+    morningData.forEach(entry => {
+      const dateString = new Date(entry.date).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      
+      if (!entriesByDate[dateString]) {
+        entriesByDate[dateString] = [];
+      }
+      entriesByDate[dateString].push(entry);
+    });
+
+    // Clear and build journal entries
+    journalEntriesContainer.innerHTML = '';
+
+    // Display entries grouped by date
+    Object.keys(entriesByDate).forEach(dateString => {
+      // Create date container
+      const dateContainer = document.createElement('div');
+      dateContainer.classList.add('date-group');
+      
+      // Create date header
+      const dateHeader = document.createElement('h3');
+      dateHeader.classList.add('date-header');
+      dateHeader.textContent = dateString;
+      dateContainer.appendChild(dateHeader);
+      
+      // Create entry list for this date
+      const entriesList = document.createElement('div');
+      entriesList.classList.add('journal-list');
+      
+      // Add entries for this date
+      entriesByDate[dateString].forEach(entry => {
+        const entryElement = document.createElement('div');
+        entryElement.classList.add('journal-item');
+        entryElement.dataset.entryId = entry.id;
+        entryElement.dataset.entryType = 'morning';
+        
+        // Determine if evening review exists
+        const hasEveningReview = entry.evening_reviews && entry.evening_reviews.length > 0;
+        
+        // Format the entry display
+        let entryHTML = `
+          <div class="journal-header">
+            <div class="journal-type">
+              <div class="icon icon-morning">
+                <span class="material-icons">wb_sunny</span>
+              </div>
+              <span>${new Date(entry.created_at).toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              })} - Morning Check-in</span>
+            </div>
+            <button class="delete-entry-button" data-entry-id="${entry.id}">Delete</button>
+          </div>
+        `;
+        
+        // Add some content preview
+        entryHTML += '<div class="entry-preview">';
+        
+        // Add action items if available
+        if (entry.strive_for_items && entry.strive_for_items.length > 0) {
+          entryHTML += '<div class="action-items"><div class="action-items-title">Action items:</div>';
+          
+          entry.strive_for_items.forEach(item => {
+            const completed = hasEveningReview && 
+              entry.evening_reviews[0].completed_actions.includes(item);
+            
+            entryHTML += `
+              <div class="action-item">
+                <span class="action-checkbox ${completed ? 'checked' : ''}">
+                  ${completed ? '✓' : '○'}
+                </span>
+                <span>${item}</span>
+              </div>
+            `;
+          });
+          
+          entryHTML += '</div>';
+        }
+        
+        entryHTML += '</div>';
+        entryElement.innerHTML = entryHTML;
+        entriesList.appendChild(entryElement);
+        
+        // Add evening review if it exists
+        if (hasEveningReview) {
+          const eveningElement = document.createElement('div');
+          eveningElement.classList.add('journal-item');
+          eveningElement.dataset.entryId = entry.evening_reviews[0].id;
+          eveningElement.dataset.entryType = 'evening';
+          eveningElement.dataset.morningId = entry.id;
+          
+          let eveningHTML = `
+            <div class="journal-header">
+              <div class="journal-type">
+                <div class="icon icon-evening">
+                  <span class="material-icons">nights_stay</span>
+                </div>
+                <span>Evening Check-in</span>
+              </div>
+              <button class="delete-entry-button" data-entry-id="${entry.evening_reviews[0].id}" data-entry-type="evening">Delete</button>
+            </div>
+          `;
+          
+          eveningElement.innerHTML = eveningHTML;
+          entriesList.appendChild(eveningElement);
+        }
+      });
+      
+      dateContainer.appendChild(entriesList);
+      journalEntriesContainer.appendChild(dateContainer);
+    });
+
+  } catch (err) {
+    console.error('Unexpected error in loadJournalEntries:', err);
+    journalEntriesContainer.innerHTML = '<p style="color: red;">An unexpected error occurred.</p>';
+  }
+}
+
+// --- Delete Journal Entry ---
+async function deleteJournalEntry(entryId, entryType) {
+  if (!entryId) return;
+  
+  if (!confirm('Are you sure you want to delete this entry? This cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    let error;
+    
+    if (entryType === 'evening') {
+      // Delete evening review
+      const { error: eveningError } = await _supabase
+        .from('evening_reviews')
+        .delete()
+        .eq('id', entryId);
+      
+      error = eveningError;
+    } else {
+      // Delete morning check-in (cascade will delete related evening review)
+      const { error: morningError } = await _supabase
+        .from('daily_check_ins')
+        .delete()
+        .eq('id', entryId);
+      
+      error = morningError;
+    }
+    
+    if (error) throw error;
+    
+    // Refresh journal entries
+    loadJournalEntries();
+    
+  } catch (error) {
+    console.error('Error deleting journal entry:', error);
+    alert('There was an error deleting the entry. Please try again.');
+  }
+}
+
+// --- Event Listeners ---
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM fully loaded. Attaching event listeners...');
+  
+  // Auth Listeners
+  if (loginButton) {
+    loginButton.addEventListener('click', async () => {
+      console.log('Login button clicked');
+      const { data, error } = await _supabase.auth.signInWithOAuth({ 
+        provider: 'google'
+      });
+      if (error) {
+        console.error('Error starting Google sign-in:', error);
+        alert('Error starting sign-in: ' + error.message);
+      }
+    });
+  }
+  
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      console.log('Logout button clicked');
+      const { error } = await _supabase.auth.signOut();
+      if (error) {
+        console.error('Error logging out:', error);
+        alert('Error logging out: ' + error.message);
+      } else {
+        console.log('SignOut command sent successfully.');
+      }
+    });
+  }
+  
+  // Navigation
+  if (historyBtn) {
+    historyBtn.addEventListener('click', showJournalView);
+  }
+  
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', showProfileView);
+  }
+  
+  if (editDaysBtn) {
+    editDaysBtn.addEventListener('click', showProfileView);
+  }
+  
+  if (panicModeBtn) {
+    panicModeBtn.addEventListener('click', showPanicMode);
+  }
+  
+  // Morning Check-in Form
+  if (addGratitudeBtn) {
+    addGratitudeBtn.addEventListener('click', addGratitudeItem);
+  }
+  
+  if (gratitudeInput) {
+    gratitudeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addGratitudeItem();
+      }
+    });
+  }
+  
+  if (addWatchForBtn) {
+    addWatchForBtn.addEventListener('click', addWatchForItem);
+  }
+  
+  if (watchForInput) {
+    watchForInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addWatchForItem();
+      }
+    });
+  }
+  
+  if (addStriveForBtn) {
+    addStriveForBtn.addEventListener('click', addStriveForItem);
+  }
+  
+  if (striveForInput) {
+    striveForInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addStriveForItem();
+      }
+    });
+  }
+  
+  // Remove items
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('remove-item')) {
+      e.target.closest('.list-item').remove();
+    }
+  });
+  
+  // Mood selection
+  moodButtons.forEach(button => {
+    button.addEventListener('click', handleMoodSelection);
+  });
+  
+  if (customMood) {
+    customMood.addEventListener('input', handleCustomMood);
+  }
+  
+  // Form submission
+  if (morningForm) {
+    morningForm.addEventListener('submit', submitMorningCheckin);
+  }
+  
+  // View switching
+  if (switchToEveningBtn) {
+    switchToEveningBtn.addEventListener('click', showEveningReview);
+  }
+  
+  if (switchToEveningCompletedBtn) {
+    switchToEveningCompletedBtn.addEventListener('click', showEveningReview);
+  }
+  
+  if (editCheckinBtn) {
+    editCheckinBtn.addEventListener('click', showMorningForm);
+  }
+  
+  // Tab switching
+  if (dailyReviewTab) {
+    dailyReviewTab.addEventListener('click', showDailyReviewTab);
+  }
+  
+  if (tenthStepTab) {
+    tenthStepTab.addEventListener('click', showTenthStepTab);
+  }
+  
+  if (continueToTenthStep) {
+    continueToTenthStep.addEventListener('click', showTenthStepTab);
+  }
+  
+  // 10th Step Toggle Buttons
+  toggleButtons.forEach(button => {
+    button.addEventListener('click', handleToggleButton);
+  });
+  
+  // 10th Step Form Submission
+  if (tenthStepForm) {
+    tenthStepForm.addEventListener('submit', submitEveningReview);
+  }
+  
+  // Panic Mode
+  if (startPanicCallBtn) {
+    startPanicCallBtn.addEventListener('click', startPanicCall);
+  }
+  
+  if (exitPanicModeBtn) {
+    exitPanicModeBtn.addEventListener('click', exitPanicMode);
+  }
+  
+  // Profile
+  if (saveProfileButton) {
+    saveProfileButton.addEventListener('click', saveUserProfile);
+  }
+  
+  // Journal Entry Deletion
+  journalEntriesContainer.addEventListener('click', (e) => {
+    if (e.target.classList.contains('delete-entry-button')) {
+      const entryId = e.target.dataset.entryId;
+      const entryType = e.target.dataset.entryType || 'morning';
+      deleteJournalEntry(entryId, entryType);
+    } else if (e.target.closest('.journal-item')) {
+      // Handle entry click for expanding/viewing details
+      const entryItem = e.target.closest('.journal-item');
+      // Toggle active class for styling
+      entryItem.classList.toggle('active');
+      
+      // You could implement showing more details here
+    }
+  });
+});

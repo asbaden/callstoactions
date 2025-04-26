@@ -11,6 +11,10 @@
   --success-color: #4caf50; /* Green for checkmarks */
   --morning-color: #ffd54f; /* Yellow for morning icon */
   --evening-color: #5c6bc0; /* Purple-blue for evening icon */
+  --danger-color: #f44336; /* Red for danger/panic */
+  --warning-color: #ff9800; /* Orange for warnings */
+  --yes-color: #f44336; /* Red for yes toggles */
+  --no-color: #4caf50; /* Green for no toggles */
 }
 
 /* Base styling */
@@ -85,7 +89,7 @@ header {
   display: flex;
   align-items: center;
   margin-top: 0;
-  margin-bottom: 15px;
+  margin-bottom: 0px;
   font-size: 1.25rem;
 }
 
@@ -94,6 +98,24 @@ header {
   font-weight: normal;
   font-size: 1rem;
   margin-top: 5px;
+}
+
+.section-icon {
+  margin-right: 8px;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  position: relative;
+  top: -1px; /* Slight adjustment to align emojis with text */
+}
+
+/* Specifically target emojis to better align them */
+.section-icon span, 
+.section-icon emoji {
+  display: inline-block;
+  vertical-align: middle;
 }
 
 /* Button styling */
@@ -118,6 +140,15 @@ header {
   background-color: #303f9f;
 }
 
+.button-secondary {
+  background-color: #e0e0e0;
+  color: var(--text-primary);
+}
+
+.button-secondary:hover {
+  background-color: #d0d0d0;
+}
+
 .button-text {
   color: var(--accent-color);
   background: none;
@@ -132,6 +163,37 @@ header {
   margin-right: 8px;
 }
 
+/* Panic Mode Button */
+.panic-button {
+  background-color: var(--danger-color);
+  color: white;
+  border-radius: 50px;
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.panic-button:hover {
+  background-color: #d32f2f;
+}
+
+.panic-button .material-icons {
+  margin-right: 5px;
+}
+
+.button-panic {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+.button-panic:hover {
+  background-color: #d32f2f;
+}
+
 /* Icon styling */
 .icon {
   display: inline-flex;
@@ -144,60 +206,259 @@ header {
 }
 
 .icon-morning {
-  background-color: var(--morning-color);
-  color: #fff;
+  color: #f6d55c;
 }
 
 .icon-evening {
-  background-color: var(--evening-color);
-  color: #fff;
+  color: #3a86ff;
 }
 
-/* Journal entries list */
-.journal-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+/* Form Styling */
+.form-section {
+  margin-bottom: 25px;
 }
 
-.journal-item {
-  padding: 15px;
-  border-bottom: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.journal-item:hover {
-  background-color: #e3f2fd;
-}
-
-.journal-item.active {
-  background-color: #e3f2fd;
-}
-
-.journal-item:last-child {
-  border-bottom: none;
-}
-
-.journal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.form-section h3 {
+  margin-top: 0;
   margin-bottom: 10px;
 }
 
-.journal-time {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  font-size: 1rem;
 }
 
-.journal-type {
+input[type="text"] {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 10px;
+}
+
+.input-with-button input {
+  flex-grow: 1;
+}
+
+.add-button {
+  background-color: var(--accent-color);
+  color: white;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
   display: flex;
   align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
 }
 
-.journal-type-text {
-  margin-left: 5px;
+.add-button:hover {
+  background-color: #303f9f;
+}
+
+.item-list {
+  margin-top: 10px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  background-color: #f9f9f9;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.list-item-text {
+  flex-grow: 1;
+}
+
+.remove-item {
+  color: var(--danger-color);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+/* Mood Buttons */
+.mood-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mood-button {
+  background-color: #f5f5f5;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mood-button:hover {
+  background-color: #e3f2fd;
+  border-color: var(--accent-color);
+}
+
+.mood-button.selected {
+  background-color: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
+
+/* View (Read-only) Styles */
+.view-section {
+  margin-bottom: 20px;
+}
+
+.view-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.view-text {
+  background-color: #f9f9f9;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.view-list .list-item {
+  margin-bottom: 5px;
+}
+
+/* Toggle buttons */
+.switch-button {
+  background-color: var(--accent-color);
+  color: white;
+  padding: 8px 15px;
+  border-radius: 50px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  border: none;
+}
+
+.switch-button:hover {
+  background-color: #303f9f;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 20px;
+}
+
+.tab-button {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.tab-button:hover {
+  color: var(--accent-color);
+}
+
+.tab-button.active {
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
+}
+
+.tab-content {
+  padding: 10px 0;
+}
+
+/* Inventory Question Styling */
+.inventory-question {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.inventory-question p {
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.toggle-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.toggle-button {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 500;
+  opacity: 0.6;
+}
+
+.toggle-button.yes {
+  background-color: #ffebee;
+  color: var(--yes-color);
+}
+
+.toggle-button.yes.active {
+  background-color: var(--yes-color);
+  color: white;
+  opacity: 1;
+}
+
+.toggle-button.no {
+  background-color: #e8f5e9;
+  color: var(--no-color);
+}
+
+.toggle-button.no.active {
+  background-color: var(--no-color);
+  color: white;
+  opacity: 1;
+}
+
+.reflection-area {
+  background-color: #f9f9f9;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.reflection-area p {
+  margin-top: 0;
+}
+
+.inventory-quote {
+  font-style: italic;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent-color);
+  padding-left: 15px;
+  margin-bottom: 30px;
 }
 
 /* Action items */
@@ -205,23 +466,424 @@ header {
   margin-top: 15px;
 }
 
-.action-items-title {
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
 .action-item {
   display: flex;
   align-items: center;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
   background-color: rgba(249, 249, 249, 0.7);
-  padding: 5px 10px;
+  padding: 12px;
   border-radius: 4px;
 }
 
-.action-item-bullet {
-  color: var(--accent-color);
+.action-checkbox {
+  margin-right: 12px;
+}
+
+.empty-message {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Journal Styles */
+#journalList {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.journal-item {
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
+}
+
+.journal-item:hover {
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.date-header {
+  background-color: #f5f7f9;
+  color: #333;
+  padding: 16px 20px;
+  font-weight: bold;
+  font-size: 18px;
+  border-bottom: 1px solid #eaedf0;
+}
+
+.entry-content {
+  padding: 0;
+}
+
+.journal-section {
+  position: relative;
+  padding: 20px;
+  border-bottom: 1px solid #f0f2f5;
+  transition: all 0.3s ease;
+}
+
+.journal-section.collapsible {
+  cursor: pointer;
+}
+
+.journal-section.collapsed .section-content {
+  display: none;
+}
+
+.section-time, .section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 15px;
+  color: #555;
+  position: relative;
+}
+
+.icon-text-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+}
+
+.section-title {
+  font-weight: 500;
+}
+
+.collapse-toggle {
+  margin-left: 8px;
   margin-right: 8px;
+  color: #999;
+  font-size: 12px;
+  transition: transform 0.3s ease;
+}
+
+.collapsed .collapse-toggle {
+  transform: rotate(-90deg);
+}
+
+.time {
+  color: #777;
+  font-size: 14px;
+}
+
+.section-content {
+  padding-left: 4px;
+}
+
+/* Morning section */
+.morning-section {
+  background-color: #fff;
+}
+
+/* Evening section */
+.evening-section {
+  background-color: #fafbfc;
+}
+
+/* Panic section */
+.panic-section {
+  background-color: #fff8e1;
+  border-left: 4px solid #ff9800;
+}
+
+/* Journal subsections */
+.journal-subsection {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.journal-subsection:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.subsection-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #444;
+  display: flex;
+  align-items: center;
+}
+
+.subsection-icon {
+  margin-right: 8px;
+}
+
+/* Mood display */
+.mood-entry {
+  background-color: #f9f9f9;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.mood-label {
+  font-weight: 500;
+  margin-right: 8px;
+  color: #555;
+}
+
+.mood-value {
+  color: #3a3a3a;
+  display: flex;
+  align-items: center;
+}
+
+.mood-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+/* Mood colors */
+.mood-positive {
+  background-color: #4caf50; /* Green for positive moods */
+}
+
+.mood-neutral {
+  background-color: #42a5f5; /* Blue for neutral moods */
+}
+
+.mood-negative {
+  background-color: #f44336; /* Red for negative moods */
+}
+
+.mood-calm {
+  background-color: #7986cb; /* Purple for calm moods */
+}
+
+.mood-energetic {
+  background-color: #ffb74d; /* Orange for energetic moods */
+}
+
+/* Progress bar */
+.progress-container {
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 14px;
+  color: #555;
+}
+
+.progress-bar {
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #4caf50;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+/* Lists */
+.gratitude-list, .watch-for-list, .strive-for-list {
+  margin: 0 0 0 20px;
+  padding-left: 12px;
+}
+
+.gratitude-list li, .watch-for-list li, .strive-for-list li {
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* Plan text */
+.plan-text {
+  background-color: #f9f9f9;
+  padding: 12px;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+/* Inventory list and items */
+.inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inventory-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 10px;
+  position: relative;
+}
+
+.inventory-icon {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.inventory-icon.positive {
+  color: #4caf50;
+  background-color: #e8f5e9;
+}
+
+.inventory-icon.negative {
+  color: #f44336;
+  background-color: #ffebee;
+}
+
+.inventory-question {
+  flex: 1;
+  line-height: 1.4;
+  padding-right: 50px; /* Make room for the Yes/No indicator */
+}
+
+.inventory-notes {
+  margin-left: 0;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #f9f9f9;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.notes-label {
+  font-weight: 500;
+  color: #555;
+}
+
+/* Action Items */
+.action-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.action-item-review {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.action-item-review:hover {
+  background-color: #f0f0f0;
+}
+
+.action-icon {
+  margin-right: 12px;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+}
+
+.action-icon.completed {
+  color: #4caf50;
+}
+
+.action-icon.not-completed {
+  color: #9e9e9e;
+}
+
+.action-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* Panic Sessions */
+.panic-entry {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed #ddd;
+}
+
+.panic-entry:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.panic-title {
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #e65100;
+}
+
+.journal-transcript {
+  background-color: rgba(255, 255, 255, 0.7);
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #ff9800;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Delete button */
+.entry-actions {
+  padding: 16px;
+  display: flex;
+  justify-content: flex-end;
+  background-color: #f8f8f8;
+}
+
+.delete-entry-button {
+  background-color: transparent;
+  color: #f44336;
+  border: 1px solid #f44336;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.delete-entry-button:hover {
+  background-color: #ffebee;
+}
+
+/* Empty list */
+.empty-list {
+  text-align: center;
+  padding: 40px 20px;
+  color: #777;
+  font-style: italic;
+  background: #f9f9f9;
+  border-radius: 8px;
+  margin-top: 24px;
 }
 
 /* Conversation styling */
@@ -252,16 +914,6 @@ header {
   border-bottom-left-radius: 5px;
 }
 
-/* Transcript view */
-.journal-transcript {
-  display: flex;
-  flex-direction: column;
-  padding: 15px;
-  background-color: #f9f9f9;
-  border-radius: 8px;
-  margin-top: 15px;
-}
-
 /* Auth section */
 #auth-section {
   text-align: center;
@@ -273,7 +925,7 @@ header {
   margin-bottom: 30px;
 }
 
-#call-status {
+#call-status, #panic-call-status {
   margin-top: 15px;
   padding: 15px;
   background-color: #f9f9f9;
@@ -281,72 +933,75 @@ header {
   min-height: 100px;
 }
 
-/* Toggle buttons */
-.switch-button {
-  background-color: var(--accent-color);
-  color: white;
-  padding: 8px 15px;
-  border-radius: 50px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  font-weight: 500;
-  position: absolute;
-  top: 20px;
-  right: 20px;
+/* Panic Mode Specific Styles */
+.panic-card {
+  border: 2px solid var(--danger-color);
 }
 
-.switch-button:hover {
-  background-color: #303f9f;
-}
-
-/* Center call buttons */
-.call-button-container {
+.panic-buttons {
   display: flex;
-  justify-content: center;
-  margin-top: 20px;
+  flex-direction: column;
+  gap: 15px;
+  margin: 20px 0;
 }
 
-/* Delete button */
-.delete-entry-button {
-  background: none;
-  border: none;
-  color: #f44336;
-  cursor: pointer;
-  font-size: 0.8rem;
+@media (min-width: 600px) {
+  .panic-buttons {
+    flex-direction: row;
+    justify-content: center;
+  }
 }
 
-.delete-entry-button:hover {
-  text-decoration: underline;
+/* Journal Subsections */
+.journal-subsection {
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
 }
 
-/* Journal date grouping */
-.date-group {
-  margin-bottom: 30px;
-  background-color: var(--card-background);
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-}
-
-.date-header {
-  padding: 12px 15px;
-  margin: 0;
-  font-size: 1.1rem;
-  background-color: #f5f5f5;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.date-group .journal-list {
-  padding: 0;
-  margin: 0;
-}
-
-.date-group .journal-item {
-  border-bottom: 1px solid var(--border-color);
-  padding: 15px;
-}
-
-.date-group .journal-item:last-child {
+.journal-subsection:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
   border-bottom: none;
+}
+
+.subsection-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #444;
+}
+
+.gratitude-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.gratitude-list li {
+  margin-bottom: 5px;
+}
+
+.plan-text, .mood-text {
+  background-color: #f9f9f9;
+  padding: 10px;
+  border-radius: 5px;
+  line-height: 1.5;
+}
+
+/* Journal Header */
+.journal-title {
+  font-size: 22px;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  color: var(--primary-color);
+}
+
+.journal-icon {
+  margin-right: 10px;
+}
+
+.journal-tagline {
+  font-size: 15px;
+  color: #666;
+  margin: 0 0 30px 0;
 }
