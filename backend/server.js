@@ -124,6 +124,35 @@ app.post('/api/openai-session', async (req, res) => {
             });
             specificInstructions += "\nTake your time to reflect after each question.";
 
+        } else if (call_type === 'panic') {
+            // Special instructions for panic/emergency calls
+            greeting = `Hi ${userName}, I'm here with you.`; // Calm, immediate greeting
+            
+            // Construct specific instructions for crisis support
+            specificInstructions = " This is an emergency support call. The user may be experiencing a craving, emotional distress, or a challenging situation related to their recovery.";
+            
+            // Add guidance for the AI assistant
+            specificInstructions += " Your priorities are to:";
+            specificInstructions += "\n1. Provide immediate emotional support and reassurance";
+            specificInstructions += "\n2. Help the user identify triggers and current feelings";
+            specificInstructions += "\n3. Guide them through grounding techniques if appropriate";
+            specificInstructions += "\n4. Remind them of their recovery progress";
+            
+            // Add sobriety-specific support if we know days sober
+            if (typeof days_sober === 'number' && days_sober > 0) {
+                const dayWord = days_sober === 1 ? "day" : "days";
+                specificInstructions += `\n\nAcknowledge their ${days_sober} ${dayWord} of sobriety as a significant achievement worth protecting.`;
+            }
+            
+            // Add specific crisis response techniques
+            specificInstructions += "\n\nUseful techniques to suggest:";
+            specificInstructions += "\n- Deep breathing: 4-count inhale, hold for 4, 6-count exhale";
+            specificInstructions += "\n- The 5-4-3-2-1 grounding technique (5 things they see, 4 things they feel, etc.)";
+            specificInstructions += "\n- HALT check: Are they Hungry, Angry, Lonely, or Tired?";
+            specificInstructions += "\n- Urge surfing: Acknowledging the craving will pass like a wave";
+            
+            // Add closing guidance
+            specificInstructions += "\n\nBe warm, patient, and supportive. Validate their feelings while encouraging positive action. Avoid judgmental language. Remember this is a critical moment where your support could be instrumental in maintaining their sobriety.";
         } else {
              // Handle unexpected call_type if necessary
              console.warn(`Unexpected call_type received: ${call_type}`);
