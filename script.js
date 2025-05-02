@@ -723,12 +723,39 @@ async function startPanicCall() {
       endChatButton.style.marginTop = '10px';
       chatContainer.appendChild(endChatButton);
       
+      // Get references to the newly created elements
+      const chatInput = document.getElementById('sponsor-chat-input');
+      const sendButton = document.getElementById('send-chat-message');
+      
+      if (!chatInput || !sendButton) {
+        console.error('Failed to find chat input or send button elements');
+        throw new Error('Chat interface elements not found');
+      }
+      
       // Store conversation history
       const conversationHistory = [];
       
-      // Add event listeners for input
-      const chatInput = document.getElementById('sponsor-chat-input');
-      const sendButton = document.getElementById('send-chat-message');
+      // Add event listeners for input - direct element references instead of getting by ID again
+      sendButton.onclick = () => {
+        const message = chatInput.value.trim();
+        if (message) {
+          sendMessage(message);
+        }
+      };
+      
+      chatInput.onkeypress = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const message = chatInput.value.trim();
+          if (message) {
+            sendMessage(message);
+          }
+        }
+      };
+      
+      endChatButton.onclick = () => {
+        endSponsorChat();
+      };
       
       // Function to send message to AI sponsor
       async function sendMessage(message) {
@@ -756,6 +783,8 @@ async function startPanicCall() {
           : 'https://callstoactions.onrender.com';
         const apiUrl = `${BASE_URL}/api/chat-sponsor`;
         
+        console.log('Sending message to API:', apiUrl);
+        
         try {
           // Show typing indicator
           const typingIndicator = document.createElement('div');
@@ -780,7 +809,9 @@ async function startPanicCall() {
           });
           
           // Remove typing indicator
-          messagesContainer.removeChild(typingIndicator);
+          if (typingIndicator.parentNode) {
+            messagesContainer.removeChild(typingIndicator);
+          }
           
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -788,6 +819,7 @@ async function startPanicCall() {
           }
           
           const data = await response.json();
+          console.log('Received response:', data);
           
           // Add AI response to UI
           addMessageToUI('assistant', data.response);
@@ -853,28 +885,6 @@ async function startPanicCall() {
         // Focus input after welcome message
         chatInput.focus();
       }, 500);
-      
-      // Event listeners
-      sendButton.addEventListener('click', () => {
-        const message = chatInput.value.trim();
-        if (message) {
-          sendMessage(message);
-        }
-      });
-      
-      chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          const message = chatInput.value.trim();
-          if (message) {
-            sendMessage(message);
-          }
-        }
-      });
-      
-      endChatButton.addEventListener('click', () => {
-        endSponsorChat();
-      });
       
     } catch (error) {
       console.error('Error starting AI sponsor chat:', error);
