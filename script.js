@@ -778,9 +778,8 @@ async function startPanicCall() {
         });
         
         // Determine API URL based on environment
-        const BASE_URL = window.location.hostname === 'localhost' 
-          ? 'http://localhost:3001' 
-          : 'https://callstoactions.onrender.com';
+        // Force using the production server instead of localhost
+        const BASE_URL = 'https://callstoactions.onrender.com';
         const apiUrl = `${BASE_URL}/api/chat-sponsor`;
         
         console.log('Sending message to API:', apiUrl);
@@ -879,7 +878,7 @@ async function startPanicCall() {
         
         conversationHistory.push({
           role: 'assistant',
-          content: 'Hello, I\'m your AI Sponsor. I\'m here to support you in your recovery journey. How can I help you today?'
+          content: "Hello, I'm your AI Sponsor. I'm here to support you in your recovery journey. How can I help you today?"
         });
         
         // Focus input after welcome message
