@@ -652,7 +652,7 @@ async function startPanicCall() {
   
   if (panicCallStatus) {
     panicCallStatus.style.display = 'block';
-    panicCallStatus.innerHTML = '<p>Connecting to Actions support...</p>';
+    panicCallStatus.innerHTML = '<h3>AI Sponsor Chat</h3><p>Connecting to your AI sponsor...</p>';
     
     try {
       // Get the user's authentication token
@@ -688,310 +688,245 @@ async function startPanicCall() {
         }
       }
       
-      // Determine API URL based on environment
-      // For production, use relative URL; for development, use localhost with port
-      const BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
-      const apiUrl = `${BASE_URL}/api/openai-session`;
+      // Create chat container
+      const chatContainer = document.createElement('div');
+      chatContainer.className = 'chat-container';
+      panicCallStatus.innerHTML = '';
+      panicCallStatus.appendChild(chatContainer);
       
-      console.log('Connecting to API at:', apiUrl);
+      // Create chat header
+      const chatHeader = document.createElement('div');
+      chatHeader.className = 'chat-header';
+      chatHeader.innerHTML = '<h3>AI Sponsor Chat</h3>';
+      chatContainer.appendChild(chatHeader);
       
-      // Request microphone permission before making the API request
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Stop the stream immediately, we just needed the permission
-        stream.getTracks().forEach(track => track.stop());
-        console.log('Microphone permission granted');
-      } catch (micError) {
-        throw new Error('Microphone access denied. Please allow microphone access to use this feature.');
+      // Create messages container
+      const messagesContainer = document.createElement('div');
+      messagesContainer.className = 'messages-container';
+      chatContainer.appendChild(messagesContainer);
+      
+      // Create input container
+      const inputContainer = document.createElement('div');
+      inputContainer.className = 'chat-input-container';
+      
+      // Create text input and send button
+      inputContainer.innerHTML = `
+        <textarea id="sponsor-chat-input" placeholder="Type your message here..."></textarea>
+        <button id="send-chat-message" class="button button-primary">Send</button>
+      `;
+      chatContainer.appendChild(inputContainer);
+      
+      // Add end chat button
+      const endChatButton = document.createElement('button');
+      endChatButton.textContent = 'End Chat';
+      endChatButton.className = 'button button-secondary';
+      endChatButton.style.marginTop = '10px';
+      chatContainer.appendChild(endChatButton);
+      
+      // Store conversation history
+      const conversationHistory = [];
+      
+      // Add event listeners for input
+      const chatInput = document.getElementById('sponsor-chat-input');
+      const sendButton = document.getElementById('send-chat-message');
+      
+      // Function to send message to AI sponsor
+      async function sendMessage(message) {
+        if (!message || !panicCallActive) return;
+        
+        // Disable input while processing
+        chatInput.disabled = true;
+        sendButton.disabled = true;
+        
+        // Add user message to UI
+        addMessageToUI('user', message);
+        
+        // Add to transcript for saving later
+        panicTranscript += `Me: ${message}\n\n`;
+        
+        // Add to conversation history
+        conversationHistory.push({
+          role: 'user',
+          content: message
+        });
+        
+        // Determine API URL based on environment
+        const BASE_URL = window.location.hostname === 'localhost' 
+          ? 'http://localhost:3001' 
+          : 'https://callstoactions.onrender.com';
+        const apiUrl = `${BASE_URL}/api/chat-sponsor`;
+        
+        try {
+          // Show typing indicator
+          const typingIndicator = document.createElement('div');
+          typingIndicator.className = 'typing-indicator';
+          typingIndicator.textContent = 'AI Sponsor is typing...';
+          messagesContainer.appendChild(typingIndicator);
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          
+          // Send request to server
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({
+              message: message,
+              conversation_history: conversationHistory,
+              user_name: userName || 'friend',
+              days_sober: daysSober
+            })
+          });
+          
+          // Remove typing indicator
+          messagesContainer.removeChild(typingIndicator);
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: response.statusText }));
+            throw new Error(`Server error: ${errorData.error || response.statusText}`);
+          }
+          
+          const data = await response.json();
+          
+          // Add AI response to UI
+          addMessageToUI('assistant', data.response);
+          
+          // Add to transcript for saving later
+          panicTranscript += `AI Sponsor: ${data.response}\n\n`;
+          
+          // Add to conversation history
+          conversationHistory.push({
+            role: 'assistant',
+            content: data.response
+          });
+          
+        } catch (error) {
+          console.error('Error sending message:', error);
+          
+          // Show error in UI
+          const errorMessage = document.createElement('div');
+          errorMessage.className = 'error-message';
+          errorMessage.textContent = `Error: ${error.message}`;
+          messagesContainer.appendChild(errorMessage);
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Re-enable input
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+        chatInput.value = '';
+        chatInput.focus();
       }
       
-      // Show connecting indicator
-      panicCallStatus.innerHTML += '<p>Preparing secure connection...</p>';
+      // Function to add message to UI
+      function addMessageToUI(role, content) {
+        const messageElement = document.createElement('div');
+        messageElement.className = role === 'user' ? 'user-message' : 'ai-message';
+        
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'message-name';
+        nameLabel.textContent = role === 'user' ? 'Me' : 'AI Sponsor';
+        
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        messageContent.textContent = content;
+        
+        messageElement.appendChild(nameLabel);
+        messageElement.appendChild(messageContent);
+        
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
       
-      // Request a session from our backend
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          call_type: 'panic', // Specify "panic" as the call type
-          user_name: userName || 'friend',
-          days_sober: daysSober
-        })
+      // Send initial welcome message
+      setTimeout(() => {
+        addMessageToUI('assistant', 'Hello, I\'m your AI Sponsor. I\'m here to support you in your recovery journey. How can I help you today?');
+        
+        panicTranscript += `AI Sponsor: Hello, I'm your AI Sponsor. I'm here to support you in your recovery journey. How can I help you today?\n\n`;
+        
+        conversationHistory.push({
+          role: 'assistant',
+          content: 'Hello, I\'m your AI Sponsor. I\'m here to support you in your recovery journey. How can I help you today?'
+        });
+        
+        // Focus input after welcome message
+        chatInput.focus();
+      }, 500);
+      
+      // Event listeners
+      sendButton.addEventListener('click', () => {
+        const message = chatInput.value.trim();
+        if (message) {
+          sendMessage(message);
+        }
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`Server error: ${errorData.error || response.statusText}`);
-      }
-      
-      const sessionData = await response.json();
-      console.log('OpenAI session created:', sessionData);
-      
-      // Update status to show connection established
-      panicCallStatus.innerHTML = '<p>Connected with Actions support.</p>';
-      
-      // Create transcript container
-      const transcriptContainer = document.createElement('div');
-      transcriptContainer.className = 'transcript-container';
-      panicCallStatus.appendChild(transcriptContainer);
-      
-      // Display connecting message in transcript
-      const connectingMessage = document.createElement('div');
-      connectingMessage.className = 'system-message';
-      connectingMessage.textContent = 'Starting conversation with Actions support...';
-      transcriptContainer.appendChild(connectingMessage);
-      
-      // Set up WebRTC and audio streaming
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      let mediaStream = null;
-      
-      // Request microphone access
-      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('Microphone activated for streaming');
-      
-      // Create and configure audio processor
-      // Note: ScriptProcessor is deprecated but still widely compatible
-      // In a future update, consider using AudioWorklet instead
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      const source = audioContext.createMediaStreamSource(mediaStream);
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-      
-      // Set up WebSocket connection to OpenAI using the session data
-      const wsUrl = new URL('wss://api.openai.com/v1/realtime/sessions');
-      wsUrl.searchParams.append('id', sessionData.id);
-      wsUrl.searchParams.append('client_secret', sessionData.client_secret);
-      
-      const ws = new WebSocket(wsUrl.toString());
-      
-      // Set up chat transcript container
-      let currentSpeaker = null;
-      let currentMessage = '';
-      
-      // WebSocket message handling
-      ws.onopen = () => {
-        console.log('WebSocket connection established');
-        
-        // Remove connecting message once WebSocket is open
-        if (connectingMessage.parentNode) {
-          connectingMessage.parentNode.removeChild(connectingMessage);
-        }
-        
-        // Add "listening" indicator
-        const listeningIndicator = document.createElement('div');
-        listeningIndicator.className = 'listening-indicator';
-        listeningIndicator.textContent = 'Listening...';
-        transcriptContainer.appendChild(listeningIndicator);
-        
-        // Send audio from microphone to OpenAI
-        processor.onaudioprocess = (e) => {
-          if (ws.readyState === WebSocket.OPEN && panicCallActive) {
-            try {
-              const inputData = e.inputBuffer.getChannelData(0);
-              const audioData = new Float32Array(inputData);
-              const dataToSend = {
-                type: 'audio',
-                data: Array.from(audioData)
-              };
-              ws.send(JSON.stringify(dataToSend));
-            } catch (audioError) {
-              console.error('Error sending audio data:', audioError);
-              // Don't throw - continue trying to send audio
-            }
+      chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const message = chatInput.value.trim();
+          if (message) {
+            sendMessage(message);
           }
-        };
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Received message:', data);
-          
-          // Remove listening indicator when first message is received
-          const listeningIndicator = transcriptContainer.querySelector('.listening-indicator');
-          if (listeningIndicator && (data.type === 'response.audio_transcript.delta' || 
-                                    data.type === 'response.output_item.delta')) {
-            listeningIndicator.parentNode.removeChild(listeningIndicator);
-          }
-          
-          // Handle different types of messages from OpenAI
-          if (data.type === 'response.audio_transcript.delta') {
-            // User's speech transcript
-            if (data.delta && data.delta.text) {
-              if (currentSpeaker !== 'Me') {
-                currentSpeaker = 'Me';
-                currentMessage = '';
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message user-message';
-                messageDiv.innerHTML = `<strong>Me:</strong> <span class="message-content"></span>`;
-                transcriptContainer.appendChild(messageDiv);
-              }
-              
-              currentMessage += data.delta.text;
-              const lastMessage = transcriptContainer.lastChild;
-              if (lastMessage) {
-                const messageContent = lastMessage.querySelector('.message-content');
-                if (messageContent) messageContent.textContent = currentMessage;
-              }
-              
-              // Save to transcript
-              panicTranscript += `Me: ${data.delta.text}\n`;
-              
-              // Scroll to bottom
-              transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
-            }
-          } else if (data.type === 'response.audio_transcript.done') {
-            // User's speech is complete
-            currentSpeaker = null;
-            panicTranscript += '\n';
-          } else if (data.type === 'response.output_item.delta') {
-            // AI's response
-            if (data.output_item && data.output_item.content && data.output_item.content.text) {
-              if (currentSpeaker !== 'AI') {
-                currentSpeaker = 'AI';
-                currentMessage = '';
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message ai-message';
-                messageDiv.innerHTML = `<strong>Actions:</strong> <span class="message-content"></span>`;
-                transcriptContainer.appendChild(messageDiv);
-                
-                // Add to transcript with a new line
-                panicTranscript += 'Actions: ';
-              }
-              
-              currentMessage += data.output_item.content.text;
-              const lastMessage = transcriptContainer.lastChild;
-              if (lastMessage) {
-                const messageContent = lastMessage.querySelector('.message-content');
-                if (messageContent) messageContent.textContent = currentMessage;
-              }
-              
-              // Save to transcript
-              panicTranscript += data.output_item.content.text;
-              
-              // Scroll to bottom
-              transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
-            }
-          } else if (data.type === 'response.output_item.done') {
-            // AI's turn is complete
-            currentSpeaker = null;
-            panicTranscript += '\n\n';
-          } else if (data.type === 'response.session.done') {
-            // Session has ended
-            endPanicCall(ws, mediaStream, processor);
-          }
-        } catch (parseError) {
-          console.error('Error parsing WebSocket message:', parseError, event.data);
         }
-      };
+      });
       
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        const errorMsg = document.createElement('div');
-        errorMsg.className = 'error-message';
-        errorMsg.textContent = 'Connection error. Please try again later.';
-        transcriptContainer.appendChild(errorMsg);
-        endPanicCall(ws, mediaStream, processor);
-      };
-      
-      ws.onclose = (event) => {
-        console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
-        // Only handle unexpected closures
-        if (event.code !== 1000) {
-          const closeMsg = document.createElement('div');
-          closeMsg.className = 'system-message';
-          closeMsg.textContent = 'Connection ended unexpectedly. You can try again later.';
-          transcriptContainer.appendChild(closeMsg);
-        }
-        endPanicCall(ws, mediaStream, processor);
-      };
-      
-      // Add an end call button
-      const endCallButton = document.createElement('button');
-      endCallButton.textContent = 'End Call';
-      endCallButton.className = 'button button-secondary';
-      endCallButton.onclick = () => {
-        endPanicCall(ws, mediaStream, processor);
-      };
-      panicCallStatus.appendChild(endCallButton);
+      endChatButton.addEventListener('click', () => {
+        endSponsorChat();
+      });
       
     } catch (error) {
-      console.error('Error in panic call:', error);
+      console.error('Error starting AI sponsor chat:', error);
       panicCallStatus.innerHTML += `<p class="error">Error: ${error.message}</p>`;
       panicCallActive = false;
     }
   }
 }
 
-// Helper function to end the panic call
-async function endPanicCall(websocket, mediaStream, audioProcessor) {
+// Function to end sponsor chat
+async function endSponsorChat() {
   if (!panicCallActive) return;
   
   panicCallActive = false;
   
-  try {
-    // Close WebSocket if it's open
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-      // Send a clean close message
-      websocket.close(1000, "User ended call");
-    }
+  const panicCallStatus = document.getElementById('panic-call-status');
+  if (panicCallStatus) {
+    // Add end message
+    const endMessage = document.createElement('div');
+    endMessage.className = 'end-chat-message';
+    endMessage.innerHTML = '<p>Chat ended. Remember you have the strength within you. We\'re here whenever you need us.</p>';
+    panicCallStatus.appendChild(endMessage);
     
-    // Stop the audio processor
-    if (audioProcessor) {
-      try {
-        audioProcessor.disconnect();
-      } catch (e) {
-        console.warn('Error disconnecting audio processor:', e);
+    // Disable input
+    const chatInput = document.getElementById('sponsor-chat-input');
+    const sendButton = document.getElementById('send-chat-message');
+    
+    if (chatInput) chatInput.disabled = true;
+    if (sendButton) sendButton.disabled = true;
+  }
+  
+  // Save chat transcript to database if we have content
+  if (panicTranscript.trim()) {
+    try {
+      const { data, error } = await _supabase
+        .from('panic_sessions')
+        .insert({
+          user_id: currentUser.id,
+          created_at: new Date().toISOString(),
+          transcript: panicTranscript.trim()
+        })
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Error saving sponsor chat to database:', error);
+      } else {
+        console.log('AI sponsor chat saved:', data);
       }
+    } catch (err) {
+      console.error('Exception saving sponsor chat:', err);
     }
-    
-    // Stop all media tracks
-    if (mediaStream) {
-      try {
-        mediaStream.getTracks().forEach(track => track.stop());
-      } catch (e) {
-        console.warn('Error stopping media tracks:', e);
-      }
-    }
-    
-    const panicCallStatus = document.getElementById('panic-call-status');
-    if (panicCallStatus) {
-      const endMessage = document.createElement('div');
-      endMessage.className = 'end-call-message';
-      endMessage.innerHTML = '<p>Call ended. Remember you have the strength within you. We\'re here whenever you need us.</p>';
-      panicCallStatus.appendChild(endMessage);
-    }
-    
-    // Save panic session to database if we have a transcript
-    if (panicTranscript.trim()) {
-      try {
-        const { data, error } = await _supabase
-          .from('panic_sessions')
-          .insert({
-            user_id: currentUser.id,
-            created_at: new Date().toISOString(),
-            transcript: panicTranscript.trim()
-          })
-          .select()
-          .single();
-          
-        if (error) {
-          console.error('Error saving panic session to database:', error);
-        } else {
-          console.log('Actions support session saved:', data);
-        }
-      } catch (err) {
-        console.error('Exception saving Actions support session:', err);
-      }
-    } else {
-      console.log('No transcript to save - call likely ended before conversation started');
-    }
-    
-  } catch (finalError) {
-    console.error('Error during panic call cleanup:', finalError);
   }
 }
 
