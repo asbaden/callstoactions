@@ -362,13 +362,14 @@ function handleCustomMood() {
 // Submit morning check-in
 async function submitMorningCheckin(event) {
   event.preventDefault();
+  console.log("submitMorningCheckin called");
   
   // Get form data
-  const gratitudeItems = Array.from(document.getElementById('gratitude-items').children).map(item => item.textContent);
+  const gratitudeItems = Array.from(document.getElementById('gratitude-items').children).map(item => item.querySelector('.list-item-text').textContent.trim());
   const generalPlan = document.getElementById('general-plan').value;
   const mood = document.getElementById('selected-mood').value;
-  const watchForItems = Array.from(document.getElementById('watch-for-items').children).map(item => item.textContent);
-  const striveForItems = Array.from(document.getElementById('strive-for-items').children).map(item => item.textContent);
+  const watchForItems = Array.from(document.getElementById('watch-for-items').children).map(item => item.querySelector('.list-item-text').textContent.trim());
+  const striveForItems = Array.from(document.getElementById('strive-for-items').children).map(item => item.querySelector('.list-item-text').textContent.trim());
   
   const today = new Date().toISOString().split('T')[0];
   
@@ -387,6 +388,8 @@ async function submitMorningCheckin(event) {
       .eq('date', today)
       .maybeSingle();
     
+    let resultMessage = "";
+    
     if (existingEntry) {
       // Update existing entry
       const { error } = await _supabase
@@ -402,7 +405,7 @@ async function submitMorningCheckin(event) {
         .eq('id', existingEntry.id);
       
       if (error) throw error;
-      showNotification('Morning check-in updated!', 'success');
+      resultMessage = 'Morning check-in updated!';
     } else {
       // Create new entry
       const { error } = await _supabase
@@ -418,8 +421,12 @@ async function submitMorningCheckin(event) {
         });
       
       if (error) throw error;
-      showNotification('Morning check-in saved!', 'success');
+      resultMessage = 'Morning check-in saved!';
     }
+    
+    // Show only one notification
+    console.log("Showing notification:", resultMessage);
+    showNotification(resultMessage, 'success');
     
     // Update progress
     updateProgressAfterMorningCheckIn();
@@ -1000,68 +1007,59 @@ function exitPanicMode() {
 
 // --- Load User Profile ---
 async function loadUserProfile() {
+  console.log("loadUserProfile called");
+  
   try {
     // Get current user
     const { data: { user }, error: userError } = await _supabase.auth.getUser();
     if (userError) throw userError;
-    if (!user) {
-      console.log("No user found");
-      return;
-    }
-
-    console.log("Loading profile for user:", user.id);
-    if (profileStatus) profileStatus.textContent = 'Loading profile...';
-    if (sobrietyDateInput) sobrietyDateInput.value = ''; 
-    userProfile = null;
-
-    // Get profile data
-    const { data, error } = await _supabase
-      .from('profiles')
-      .select('sobriety_date')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching profile:', error);
-      if (profileStatus) profileStatus.textContent = 'Error loading profile.';
-      return;
-    }
-
-    if (data) {
-      console.log("Profile data received:", data);
-      userProfile = data;
+    
+    if (user) {
+      console.log("Found user:", user.id);
       
-      if (data.sobriety_date) {
-        if (sobrietyDateInput) {
+      // Fetch user profile data
+      const { data, error } = await _supabase
+        .from('profiles')
+        .select('sobriety_date')
+        .eq('user_id', user.id)
+        .maybeSingle();
+        
+      if (error) {
+        console.error('Error loading user profile:', error);
+        return;
+      }
+      
+      console.log("Profile data:", data);
+      
+      // If we have a profile, show the sobriety date in the input
+      if (data) {
+        const sobrietyDateInput = document.getElementById('sobriety-date');
+        if (data.sobriety_date && sobrietyDateInput) {
           sobrietyDateInput.value = data.sobriety_date;
+          console.log(`Setting sobriety date input to ${data.sobriety_date}`);
         }
         
-        // Update sobriety days display
-        updateSobrietyDaysDisplay();
-        
-        if (profileStatus) profileStatus.textContent = 'Profile loaded.';
+        // Always update sobriety days display
+        await updateSobrietyDaysDisplay();
       } else {
-        console.log("No sobriety date found in profile");
-        if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
+        console.log("No profile found for user, creating one");
+        // Create an empty profile if none exists
+        const { error: createError } = await _supabase
+          .from('profiles')
+          .insert({
+            user_id: user.id
+            // Removed updated_at
+          });
+          
+        if (createError) {
+          console.error('Error creating profile:', createError);
+        }
       }
     } else {
-      console.log("No profile found, creating an empty one");
-      // Create an empty profile
-      const { error: createError } = await _supabase
-        .from('profiles')
-        .insert({
-          user_id: user.id
-        });
-      
-      if (createError) {
-        console.error("Error creating profile:", createError);
-      }
-      
-      if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
+      console.log("No user found in loadUserProfile");
     }
   } catch (error) {
     console.error('Error in loadUserProfile:', error);
-    if (profileStatus) profileStatus.textContent = 'Error loading profile.';
   }
 }
 
@@ -1527,6 +1525,7 @@ function createEveningEntry(eveningData, morningData) {
   const iconTextSpan = document.createElement('span');
   iconTextSpan.className = 'icon-text-wrapper';
   iconTextSpan.innerHTML = `<span class="section-icon">🌙</span><span class="section-title">Evening Check-in</span>`;
+  
   
   // Add all elements to header
   eveningHeader.appendChild(iconTextSpan);
@@ -2522,6 +2521,7 @@ function updateProgressAfterEveningReview() {
 
 // Update the sobriety days display correctly
 async function updateSobrietyDaysDisplay() {
+  console.log("updateSobrietyDaysDisplay called");
   try {
     // Get current user
     const { data: { user }, error: userError } = await _supabase.auth.getUser();
@@ -2532,6 +2532,7 @@ async function updateSobrietyDaysDisplay() {
     }
 
     // Get profile data
+    console.log("Fetching profile data for user:", user.id);
     const { data, error } = await _supabase
       .from('profiles')
       .select('sobriety_date')
@@ -2543,6 +2544,8 @@ async function updateSobrietyDaysDisplay() {
       return;
     }
 
+    console.log("Profile data received:", data);
+    
     if (data && data.sobriety_date) {
       const sobrietyDate = new Date(data.sobriety_date);
       const today = new Date();
@@ -2553,18 +2556,29 @@ async function updateSobrietyDaysDisplay() {
         const diffTime = Math.abs(today - sobrietyDate);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        // Update all sobriety counters
+        // Update all sobriety counters with consistent format
         const sobrietyDaysCount = document.getElementById('sobriety-days-count');
+        const daysCountHeader = document.getElementById('days-count');
+        
+        const daysText = `${diffDays} days sober`;
+        
         if (sobrietyDaysCount) {
-          sobrietyDaysCount.textContent = `${diffDays} days sober`;
+          sobrietyDaysCount.textContent = daysText;
+          console.log("Updated sobriety-days-count to:", daysText);
+        } else {
+          console.log("sobriety-days-count element not found");
         }
         
-        const daysCount = document.getElementById('days-count');
-        if (daysCount) {
-          daysCount.textContent = `${diffDays} days`;
+        if (daysCountHeader) {
+          daysCountHeader.textContent = daysText;
+          console.log("Updated days-count in header to:", daysText);
+        } else {
+          console.log("days-count element not found");
         }
         
-        console.log(`Updated sobriety days to ${diffDays}`);
+        console.log(`Updated sobriety days to ${diffDays} days sober`);
+      } else {
+        console.log("Invalid sobriety date:", data.sobriety_date);
       }
     } else {
       console.log("No sobriety date found");
@@ -2611,21 +2625,49 @@ function showWelcomeView() {
 
 // Update the morning check-in functionality to always be editable
 function setupCheckInForms() {
+    console.log("Setting up form handlers");
+    
     // Morning check-in form
     const morningForm = document.getElementById('morning-form');
     if (morningForm) {
-        morningForm.addEventListener('submit', async (event) => {
+        // First remove any existing listeners to avoid duplicates
+        const oldSubmit = morningForm.onsubmit;
+        if (oldSubmit) morningForm.onsubmit = null;
+        
+        // Clear any existing event listeners (for modern browsers)
+        morningForm.replaceWith(morningForm.cloneNode(true));
+        
+        // Re-get the form after replacing it
+        const newMorningForm = document.getElementById('morning-form');
+        
+        // Add our single event listener
+        newMorningForm.addEventListener('submit', async (event) => {
             event.preventDefault();
+            console.log("Morning form submitted");
             await submitMorningCheckin(event);
+            closeModal('morning-checkin-modal');
         });
     }
     
     // 10th Step form 
     const tenthStepForm = document.getElementById('tenth-step-form');
     if (tenthStepForm) {
-        tenthStepForm.addEventListener('submit', async (event) => {
+        // First remove any existing listeners to avoid duplicates
+        const oldSubmit = tenthStepForm.onsubmit;
+        if (oldSubmit) tenthStepForm.onsubmit = null;
+        
+        // Clear any existing event listeners
+        tenthStepForm.replaceWith(tenthStepForm.cloneNode(true));
+        
+        // Re-get the form after replacing it
+        const newTenthStepForm = document.getElementById('tenth-step-form');
+        
+        // Add our single event listener
+        newTenthStepForm.addEventListener('submit', async (event) => {
             event.preventDefault();
+            console.log("10th step form submitted");
             await submitTenthStep(event);
+            closeModal('tenth-step-modal');
         });
     }
     
@@ -2932,7 +2974,7 @@ function setupNavigation() {
     });
 }
 
-// Make sure setupNavigation gets called during initialization
+// Make sure setupNavigation gets called during initialization and update sobriety days
 document.addEventListener('DOMContentLoaded', () => {
   console.log('DOM fully loaded. Setting up navigation...');
   setupNavigation();
@@ -2946,7 +2988,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Update form submissions to close modals
+  // Update form submissions to close modals - REMOVE THESE TO AVOID DUPLICATES
+  // These are already handled in setupCheckInForms()
+  /* 
   const morningForm = document.getElementById('morning-form');
   if (morningForm) {
     morningForm.addEventListener('submit', async (event) => {
@@ -2964,6 +3008,15 @@ document.addEventListener('DOMContentLoaded', () => {
       closeModal('tenth-step-modal');
     });
   }
+  */
+  
+  // Check if user is already logged in and update sobriety days
+  _supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      console.log("User is logged in, updating sobriety days");
+      updateSobrietyDaysDisplay().catch(err => console.error('Error updating sobriety days:', err));
+    }
+  });
 });
 
 // Functions to show and hide modals
