@@ -396,8 +396,8 @@ async function submitMorningCheckin(event) {
           general_plan: generalPlan,
           current_mood: mood,
           watch_for_items: watchForItems,
-          strive_for_items: striveForItems,
-          updated_at: new Date().toISOString()
+          strive_for_items: striveForItems
+          // Removed updated_at as it's not in the schema
         })
         .eq('id', existingEntry.id);
       
@@ -1036,28 +1036,8 @@ async function loadUserProfile() {
           sobrietyDateInput.value = data.sobriety_date;
         }
         
-        // Calculate days sober
-        const sobrietyDate = new Date(data.sobriety_date);
-        const today = new Date();
-        sobrietyDate.setHours(0, 0, 0, 0);
-        today.setHours(0, 0, 0, 0);
-
-        if (!isNaN(sobrietyDate)) {
-          const diffTime = Math.abs(today - sobrietyDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          const daysText = `${diffDays} days`;
-          
-          // Update all day counters
-          if (daysCount) daysCount.textContent = daysText;
-          
-          // Update sobriety count in the progress section
-          const sobrietyDaysCount = document.getElementById('sobriety-days-count');
-          if (sobrietyDaysCount) {
-            sobrietyDaysCount.textContent = `${diffDays} days sober`;
-          }
-          
-          console.log(`Updated sobriety days to ${diffDays}`);
-        }
+        // Update sobriety days display
+        updateSobrietyDaysDisplay();
         
         if (profileStatus) profileStatus.textContent = 'Profile loaded.';
       } else {
@@ -1070,8 +1050,7 @@ async function loadUserProfile() {
       const { error: createError } = await _supabase
         .from('profiles')
         .insert({
-          user_id: user.id,
-          updated_at: new Date().toISOString()
+          user_id: user.id
         });
       
       if (createError) {
@@ -1088,7 +1067,7 @@ async function loadUserProfile() {
 
 // --- Save User Profile ---
 async function saveUserProfile() {
-  if (!currentUser || !sobrietyDateInput) return;
+  if (!sobrietyDateInput) return;
 
   const sobrietyDate = sobrietyDateInput.value;
   if (!sobrietyDate || isNaN(new Date(sobrietyDate))) {
@@ -1096,16 +1075,22 @@ async function saveUserProfile() {
     return;
   }
 
-  console.log(`Saving sobriety date: ${sobrietyDate} for user: ${currentUser.id}`);
+  console.log(`Saving sobriety date: ${sobrietyDate}`);
   if(profileStatus) profileStatus.textContent = 'Saving...';
 
   try {
+    // Get current user
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) {
+      throw new Error('You need to be logged in');
+    }
+    
     const { error } = await _supabase
       .from('profiles')
       .upsert({ 
-        user_id: currentUser.id,
-        sobriety_date: sobrietyDate,
-        updated_at: new Date()
+        user_id: user.id,
+        sobriety_date: sobrietyDate
+        // Removed updated_at as it's not in the schema
       }, {
         onConflict: 'user_id'
       });
@@ -1116,11 +1101,13 @@ async function saveUserProfile() {
 
     console.log("Profile saved successfully.");
     if(profileStatus) profileStatus.textContent = 'Date saved successfully!';
-    await loadUserProfile(); 
+    
+    // Update the sobriety days display
+    updateSobrietyDaysDisplay();
 
   } catch (error) {
     console.error('Error saving user profile:', error);
-    if(profileStatus) profileStatus.textContent = 'Error saving date.';
+    if(profileStatus) profileStatus.textContent = 'Error saving date: ' + error.message;
   }
 }
 
@@ -2533,18 +2520,93 @@ function updateProgressAfterEveningReview() {
   console.log('Updated progress after evening review');
 }
 
-// Helper function to display the number of sobriety days
-function updateSobrietyDaysDisplay() {
-    const sobrietyDate = localStorage.getItem('sobrietyDate');
-    if (sobrietyDate) {
-        const startDate = new Date(sobrietyDate);
-        const today = new Date();
-        const diffTime = Math.abs(today - startDate);
+// Update the sobriety days display correctly
+async function updateSobrietyDaysDisplay() {
+  try {
+    // Get current user
+    const { data: { user }, error: userError } = await _supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user) {
+      console.log("No user found for sobriety date");
+      return;
+    }
+
+    // Get profile data
+    const { data, error } = await _supabase
+      .from('profiles')
+      .select('sobriety_date')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching sobriety date:', error);
+      return;
+    }
+
+    if (data && data.sobriety_date) {
+      const sobrietyDate = new Date(data.sobriety_date);
+      const today = new Date();
+      sobrietyDate.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+
+      if (!isNaN(sobrietyDate)) {
+        const diffTime = Math.abs(today - sobrietyDate);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        // Update all sobriety day displays
-        document.getElementById('sobriety-days-count').textContent = `${diffDays} days sober`;
+        // Update all sobriety counters
+        const sobrietyDaysCount = document.getElementById('sobriety-days-count');
+        if (sobrietyDaysCount) {
+          sobrietyDaysCount.textContent = `${diffDays} days sober`;
+        }
+        
+        const daysCount = document.getElementById('days-count');
+        if (daysCount) {
+          daysCount.textContent = `${diffDays} days`;
+        }
+        
+        console.log(`Updated sobriety days to ${diffDays}`);
+      }
+    } else {
+      console.log("No sobriety date found");
+      // Create an empty profile if none exists
+      if (!data) {
+        const { error: createError } = await _supabase
+          .from('profiles')
+          .insert({
+            user_id: user.id
+            // Removed updated_at as it's not in the schema
+          });
+        
+        if (createError) {
+          console.error("Error creating profile:", createError);
+        }
+      }
     }
+  } catch (error) {
+    console.error('Error updating sobriety days:', error);
+  }
+}
+
+// Function to show welcome/progress view after login
+function showWelcomeView() {
+  // Hide all content views except progress section
+  document.getElementById('morning-checkin-form').style.display = 'none';
+  document.getElementById('tenth-step-view').style.display = 'none';
+  document.getElementById('journal-view').style.display = 'none';
+  document.getElementById('profile-view').style.display = 'none';
+  document.getElementById('panic-mode-view').style.display = 'none';
+  
+  // Make sure progress section is visible
+  const progressSection = document.getElementById('progress-section');
+  if (progressSection) {
+    progressSection.style.display = 'block';
+  }
+  
+  // Update progress tracking
+  initProgressTracking();
+  
+  // Update sobriety days count
+  updateSobrietyDaysDisplay();
 }
 
 // Update the morning check-in functionality to always be editable
@@ -2795,6 +2857,7 @@ function setupNavigation() {
     // Modal buttons
     const viewMorningBtn = document.getElementById('view-morning-btn');
     const viewTenthStepBtn = document.getElementById('view-tenth-step-btn');
+    const viewPanicBtn = document.getElementById('view-panic-btn');
     const closeButtons = document.querySelectorAll('.close-modal');
     
     // Handle navigation to home
@@ -2850,6 +2913,16 @@ function setupNavigation() {
         });
     }
     
+    // Open panic mode view
+    if (viewPanicBtn) {
+        viewPanicBtn.addEventListener('click', () => {
+            console.log('Opening Panic mode');
+            document.getElementById('journal-view').style.display = 'none';
+            document.getElementById('profile-view').style.display = 'none';
+            document.getElementById('panic-mode-view').style.display = 'block';
+        });
+    }
+    
     // Set up close buttons for all modals
     closeButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -2857,25 +2930,6 @@ function setupNavigation() {
             closeModal(modalId);
         });
     });
-}
-
-// Function to show welcome/progress view after login
-function showWelcomeView() {
-  // Hide all content views except progress section
-  document.getElementById('morning-checkin-form').style.display = 'none';
-  document.getElementById('tenth-step-view').style.display = 'none';
-  document.getElementById('journal-view').style.display = 'none';
-  document.getElementById('profile-view').style.display = 'none';
-  document.getElementById('panic-mode-view').style.display = 'none';
-  
-  // Make sure progress section is visible
-  const progressSection = document.getElementById('progress-section');
-  if (progressSection) {
-    progressSection.style.display = 'block';
-  }
-  
-  // Update progress tracking
-  initProgressTracking();
 }
 
 // Make sure setupNavigation gets called during initialization
@@ -2990,8 +3044,8 @@ async function submitTenthStep(event) {
       const { error } = await _supabase
         .from('evening_reviews')
         .update({
-          tenth_step: tenth_step,
-          updated_at: new Date().toISOString()
+          tenth_step: tenth_step
+          // Removed updated_at as it's not in the schema
         })
         .eq('id', existingEntry.id);
       
