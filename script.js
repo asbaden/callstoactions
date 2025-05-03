@@ -108,8 +108,8 @@ const updateUI = (user) => {
     if (progressSection) progressSection.style.display = 'block';
     if (userNameDisplay) userNameDisplay.textContent = user.displayName || user.email;
     
-    // Show morning check-in by default, hide other views
-    document.getElementById('morning-checkin-form').style.display = 'block';
+    // Hide all content views by default - let the user choose what to view
+    document.getElementById('morning-checkin-form').style.display = 'none';
     document.getElementById('tenth-step-view').style.display = 'none';
     document.getElementById('journal-view').style.display = 'none';
     document.getElementById('profile-view').style.display = 'none';
@@ -117,9 +117,6 @@ const updateUI = (user) => {
     
     // Update sobriety days display
     updateSobrietyDaysDisplay();
-    
-    // Check for existing check-ins
-    loadCheckInData();
     
     // Load user profile
     loadUserProfile();
@@ -2001,9 +1998,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (error) {
         console.error('Error starting Google sign-in:', error);
         alert('Error starting sign-in: ' + error.message);
-        }
+      }
     });
-}
+  }
 
   if (logoutButton) {
     logoutButton.addEventListener('click', async () => {
@@ -2017,6 +2014,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  
+  // Show welcome view after login
+  _supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      // Wait a bit for user profile to load
+      setTimeout(() => {
+        showWelcomeView();
+      }, 1000);
+    }
+  });
   
   // Navigation
   if (historyBtn) {
@@ -2513,30 +2520,62 @@ function setupCheckInForms() {
             const watchForItems = Array.from(document.getElementById('watch-for-items').children).map(item => item.textContent);
             const striveForItems = Array.from(document.getElementById('strive-for-items').children).map(item => item.textContent);
             
-            // Create check-in data
-            const checkInData = {
-                date: new Date().toISOString().split('T')[0],
-                type: 'morning',
-                gratitude: gratitudeItems,
-                generalPlan: generalPlan,
-                mood: mood,
-                watchFor: watchForItems,
-                striveFor: striveForItems
-            };
+            const today = new Date().toISOString().split('T')[0];
             
-            // Save to Firebase
             try {
-                const user = auth.currentUser;
-                if (user) {
-                    await db.collection('users').doc(user.uid).collection('journal').doc(checkInData.date + '-morning').set(checkInData);
-                    showNotification('Morning check-in saved!', 'success');
-                    
-                    // Update progress after morning check-in
-                    updateProgressAfterMorningCheckIn();
+                // Get current user
+                const { data: { user } } = await _supabase.auth.getUser();
+                if (!user) {
+                    throw new Error('You need to be logged in');
                 }
+                
+                // Check if entry already exists
+                const { data: existingEntry } = await _supabase
+                    .from('daily_check_ins')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('date', today)
+                    .maybeSingle();
+                
+                if (existingEntry) {
+                    // Update existing entry
+                    const { error } = await _supabase
+                        .from('daily_check_ins')
+                        .update({
+                            gratitude_list: gratitudeItems,
+                            general_plan: generalPlan,
+                            current_mood: mood,
+                            watch_for_items: watchForItems,
+                            strive_for_items: striveForItems,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', existingEntry.id);
+                    
+                    if (error) throw error;
+                    showNotification('Morning check-in updated!', 'success');
+                } else {
+                    // Create new entry
+                    const { error } = await _supabase
+                        .from('daily_check_ins')
+                        .insert({
+                            user_id: user.id,
+                            date: today,
+                            gratitude_list: gratitudeItems,
+                            general_plan: generalPlan,
+                            current_mood: mood,
+                            watch_for_items: watchForItems,
+                            strive_for_items: striveForItems
+                        });
+                    
+                    if (error) throw error;
+                    showNotification('Morning check-in saved!', 'success');
+                }
+                
+                // Update progress
+                updateProgressAfterMorningCheckIn();
             } catch (error) {
                 console.error('Error saving morning check-in:', error);
-                showNotification('Error saving check-in. Please try again.', 'error');
+                alert('Error saving check-in: ' + error.message);
             }
         });
     }
@@ -2547,45 +2586,79 @@ function setupCheckInForms() {
         tenthStepForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             
-            // Get form data
-            const tenthStepData = {
-                date: new Date().toISOString().split('T')[0],
-                type: 'tenth-step',
-                harmAnyone: {
-                    answer: document.querySelector('[data-question="harm_anyone"].active').dataset.value,
+            // Get form data to create tenth step data
+            const tenth_step = {
+                harm_anyone: {
+                    answer: document.querySelector('[data-question="harm_anyone"].active').dataset.value === 'yes',
                     reflection: document.getElementById('harm-reflection').value
                 },
                 resentment: {
-                    answer: document.querySelector('[data-question="resentment"].active').dataset.value,
+                    answer: document.querySelector('[data-question="resentment"].active').dataset.value === 'yes',
                     reflection: document.getElementById('resentment-reflection').value
                 },
-                fearAnxiety: {
-                    answer: document.querySelector('[data-question="fear_anxiety"].active').dataset.value,
+                fear_anxiety: {
+                    answer: document.querySelector('[data-question="fear_anxiety"].active').dataset.value === 'yes',
                     reflection: document.getElementById('fear-reflection').value
                 },
                 selfish: {
-                    answer: document.querySelector('[data-question="selfish"].active').dataset.value,
+                    answer: document.querySelector('[data-question="selfish"].active').dataset.value === 'yes',
                     reflection: document.getElementById('selfish-reflection').value
                 },
                 apology: {
-                    answer: document.querySelector('[data-question="apology"].active').dataset.value,
+                    answer: document.querySelector('[data-question="apology"].active').dataset.value === 'yes',
                     reflection: document.getElementById('apology-reflection').value
                 }
             };
             
-            // Save to Firebase
+            const today = new Date().toISOString().split('T')[0];
+            
             try {
-                const user = auth.currentUser;
-                if (user) {
-                    await db.collection('users').doc(user.uid).collection('journal').doc(tenthStepData.date + '-tenth-step').set(tenthStepData);
-                    showNotification('10th Step completed!', 'success');
-                    
-                    // Update progress after 10th step
-                    updateProgressAfterEveningReview();
+                // Get current user
+                const { data: { user } } = await _supabase.auth.getUser();
+                if (!user) {
+                    throw new Error('You need to be logged in');
                 }
+                
+                // Check if entry already exists
+                const { data: existingEntry } = await _supabase
+                    .from('evening_reviews')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('date', today)
+                    .maybeSingle();
+                
+                if (existingEntry) {
+                    // Update existing entry
+                    const { error } = await _supabase
+                        .from('evening_reviews')
+                        .update({
+                            tenth_step: tenth_step,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', existingEntry.id);
+                    
+                    if (error) throw error;
+                    showNotification('10th Step updated!', 'success');
+                } else {
+                    // Create new entry
+                    const { error } = await _supabase
+                        .from('evening_reviews')
+                        .insert({
+                            user_id: user.id,
+                            date: today,
+                            tenth_step: tenth_step,
+                            completed_actions: []
+                        });
+                    
+                    if (error) throw error;
+                    showNotification('10th Step saved!', 'success');
+                }
+                
+                // Update progress
+                updateProgressAfterEveningReview();
             } catch (error) {
                 console.error('Error saving 10th step:', error);
-                showNotification('Error saving 10th step. Please try again.', 'error');
+                alert('Error saving 10th step: ' + error.message);
             }
         });
     }
@@ -2593,22 +2666,28 @@ function setupCheckInForms() {
 
 // Load existing check-in data if available
 async function loadCheckInData() {
-    const user = auth.currentUser;
+    // Use Supabase auth instead of Firebase
+    const { data: { user } } = await _supabase.auth.getUser();
     if (!user) return;
     
     const today = new Date().toISOString().split('T')[0];
     
     try {
         // Check for morning check-in
-        const morningDocRef = await db.collection('users').doc(user.uid).collection('journal').doc(today + '-morning').get();
+        const { data: morningData, error: morningError } = await _supabase
+            .from('daily_check_ins')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('date', today)
+            .maybeSingle();
         
-        if (morningDocRef.exists) {
-            const data = morningDocRef.data();
-            
+        if (morningError) throw morningError;
+        
+        if (morningData) {
             // Populate morning form with existing data
             document.getElementById('gratitude-items').innerHTML = '';
-            if (data.gratitude) {
-                data.gratitude.forEach(item => {
+            if (morningData.gratitude_list) {
+                morningData.gratitude_list.forEach(item => {
                     const listItem = document.createElement('div');
                     listItem.className = 'item';
                     listItem.textContent = item;
@@ -2616,22 +2695,22 @@ async function loadCheckInData() {
                 });
             }
             
-            document.getElementById('general-plan').value = data.generalPlan || '';
-            document.getElementById('selected-mood').value = data.mood || '';
+            document.getElementById('general-plan').value = morningData.general_plan || '';
+            document.getElementById('selected-mood').value = morningData.current_mood || '';
             
             // Update mood buttons to reflect selection
-            if (data.mood) {
+            if (morningData.current_mood) {
                 document.querySelectorAll('.mood-button').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.dataset.mood === data.mood) {
+                    if (btn.dataset.mood === morningData.current_mood) {
                         btn.classList.add('active');
                     }
                 });
             }
             
             document.getElementById('watch-for-items').innerHTML = '';
-            if (data.watchFor) {
-                data.watchFor.forEach(item => {
+            if (morningData.watch_for_items) {
+                morningData.watch_for_items.forEach(item => {
                     const listItem = document.createElement('div');
                     listItem.className = 'item';
                     listItem.textContent = item;
@@ -2640,8 +2719,8 @@ async function loadCheckInData() {
             }
             
             document.getElementById('strive-for-items').innerHTML = '';
-            if (data.striveFor) {
-                data.striveFor.forEach(item => {
+            if (morningData.strive_for_items) {
+                morningData.strive_for_items.forEach(item => {
                     const listItem = document.createElement('div');
                     listItem.className = 'item';
                     listItem.textContent = item;
@@ -2650,71 +2729,132 @@ async function loadCheckInData() {
             }
         }
         
-        // Check for 10th step
-        const tenthStepDocRef = await db.collection('users').doc(user.uid).collection('journal').doc(today + '-tenth-step').get();
+        // Check for 10th step data
+        const { data: tenthStepData, error: tenthStepError } = await _supabase
+            .from('evening_reviews')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('date', today)
+            .maybeSingle();
         
-        if (tenthStepDocRef.exists) {
-            const data = tenthStepDocRef.data();
+        if (tenthStepError) throw tenthStepError;
+        
+        if (tenthStepData && tenthStepData.tenth_step) {
+            const data = tenthStepData.tenth_step;
             
             // Populate 10th step form with existing data
-            if (data.harmAnyone) {
+            if (data.harm_anyone) {
                 document.querySelectorAll('[data-question="harm_anyone"]').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.dataset.value === data.harmAnyone.answer) {
+                    if (btn.dataset.value === (data.harm_anyone.answer ? 'yes' : 'no')) {
                         btn.classList.add('active');
                     }
                 });
-                document.getElementById('harm-reflection').value = data.harmAnyone.reflection || '';
-                document.getElementById('harm-reflection-area').style.display = data.harmAnyone.answer === 'yes' ? 'block' : 'none';
+                document.getElementById('harm-reflection').value = data.harm_anyone.reflection || '';
+                document.getElementById('harm-reflection-area').style.display = data.harm_anyone.answer ? 'block' : 'none';
             }
             
             if (data.resentment) {
                 document.querySelectorAll('[data-question="resentment"]').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.dataset.value === data.resentment.answer) {
+                    if (btn.dataset.value === (data.resentment.answer ? 'yes' : 'no')) {
                         btn.classList.add('active');
                     }
                 });
                 document.getElementById('resentment-reflection').value = data.resentment.reflection || '';
-                document.getElementById('resentment-reflection-area').style.display = data.resentment.answer === 'yes' ? 'block' : 'none';
+                document.getElementById('resentment-reflection-area').style.display = data.resentment.answer ? 'block' : 'none';
             }
             
-            if (data.fearAnxiety) {
+            if (data.fear_anxiety) {
                 document.querySelectorAll('[data-question="fear_anxiety"]').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.dataset.value === data.fearAnxiety.answer) {
+                    if (btn.dataset.value === (data.fear_anxiety.answer ? 'yes' : 'no')) {
                         btn.classList.add('active');
                     }
                 });
-                document.getElementById('fear-reflection').value = data.fearAnxiety.reflection || '';
-                document.getElementById('fear-reflection-area').style.display = data.fearAnxiety.answer === 'yes' ? 'block' : 'none';
+                document.getElementById('fear-reflection').value = data.fear_anxiety.reflection || '';
+                document.getElementById('fear-reflection-area').style.display = data.fear_anxiety.answer ? 'block' : 'none';
             }
             
             if (data.selfish) {
                 document.querySelectorAll('[data-question="selfish"]').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.dataset.value === data.selfish.answer) {
+                    if (btn.dataset.value === (data.selfish.answer ? 'yes' : 'no')) {
                         btn.classList.add('active');
                     }
                 });
                 document.getElementById('selfish-reflection').value = data.selfish.reflection || '';
-                document.getElementById('selfish-reflection-area').style.display = data.selfish.answer === 'yes' ? 'block' : 'none';
+                document.getElementById('selfish-reflection-area').style.display = data.selfish.answer ? 'block' : 'none';
             }
             
             if (data.apology) {
                 document.querySelectorAll('[data-question="apology"]').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.dataset.value === data.apology.answer) {
+                    if (btn.dataset.value === (data.apology.answer ? 'yes' : 'no')) {
                         btn.classList.add('active');
                     }
                 });
                 document.getElementById('apology-reflection').value = data.apology.reflection || '';
-                document.getElementById('apology-reflection-area').style.display = data.apology.answer === 'yes' ? 'block' : 'none';
+                document.getElementById('apology-reflection-area').style.display = data.apology.answer ? 'block' : 'none';
             }
         }
     } catch (error) {
         console.error('Error loading check-in data:', error);
     }
+}
+
+// Function for notifications
+function showNotification(message, type = 'info') {
+  // Check if a notification container exists, or create one
+  let notificationContainer = document.getElementById('notification-container');
+  
+  if (!notificationContainer) {
+    notificationContainer = document.createElement('div');
+    notificationContainer.id = 'notification-container';
+    notificationContainer.style.position = 'fixed';
+    notificationContainer.style.top = '20px';
+    notificationContainer.style.right = '20px';
+    notificationContainer.style.zIndex = '1000';
+    document.body.appendChild(notificationContainer);
+  }
+  
+  // Create notification
+  const notification = document.createElement('div');
+  notification.className = `notification notification-${type}`;
+  notification.innerHTML = message;
+  
+  // Style notification
+  notification.style.padding = '12px 20px';
+  notification.style.marginBottom = '10px';
+  notification.style.borderRadius = '4px';
+  notification.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+  notification.style.transition = 'all 0.3s ease';
+  
+  // Set color based on type
+  if (type === 'success') {
+    notification.style.backgroundColor = '#4caf50';
+    notification.style.color = 'white';
+  } else if (type === 'error') {
+    notification.style.backgroundColor = '#f44336';
+    notification.style.color = 'white';
+  } else {
+    notification.style.backgroundColor = '#2196f3';
+    notification.style.color = 'white';
+  }
+  
+  // Add notification to container
+  notificationContainer.appendChild(notification);
+  
+  // Remove notification after 3 seconds
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    notification.style.transform = 'translateX(20px)';
+    setTimeout(() => {
+      if (notification.parentNode === notificationContainer) {
+        notificationContainer.removeChild(notification);
+      }
+    }, 300);
+  }, 3000);
 }
 
 // Function to set up navigation
@@ -2732,14 +2872,7 @@ function setupNavigation() {
     // Handle navigation to home
     if (homeBtn) {
         homeBtn.addEventListener('click', () => {
-            document.getElementById('morning-checkin-form').style.display = 'block';
-            document.getElementById('tenth-step-view').style.display = 'none';
-            document.getElementById('journal-view').style.display = 'none';
-            document.getElementById('profile-view').style.display = 'none';
-            document.getElementById('panic-mode-view').style.display = 'none';
-            
-            // Load existing data
-            loadCheckInData();
+            showWelcomeView();
         });
     }
     
@@ -2779,9 +2912,10 @@ function setupNavigation() {
         });
     }
     
-    // Handle morning check-in button
+    // Handle morning check-in button - key issue to fix
     if (viewMorningBtn) {
-        viewMorningBtn.addEventListener('click', () => {
+        viewMorningBtn.addEventListener('click', async () => {
+            console.log('Morning check-in button clicked');
             document.getElementById('morning-checkin-form').style.display = 'block';
             document.getElementById('tenth-step-view').style.display = 'none';
             document.getElementById('journal-view').style.display = 'none';
@@ -2789,13 +2923,14 @@ function setupNavigation() {
             document.getElementById('panic-mode-view').style.display = 'none';
             
             // Load existing data
-            loadCheckInData();
+            await loadCheckInData();
         });
     }
     
-    // Handle 10th step button
+    // Handle 10th step button - key issue to fix
     if (viewTenthStepBtn) {
-        viewTenthStepBtn.addEventListener('click', () => {
+        viewTenthStepBtn.addEventListener('click', async () => {
+            console.log('10th step button clicked');
             document.getElementById('morning-checkin-form').style.display = 'none';
             document.getElementById('tenth-step-view').style.display = 'block';
             document.getElementById('journal-view').style.display = 'none';
@@ -2803,7 +2938,26 @@ function setupNavigation() {
             document.getElementById('panic-mode-view').style.display = 'none';
             
             // Load existing data
-            loadCheckInData();
+            await loadCheckInData();
         });
     }
+}
+
+// Function to show welcome/progress view after login
+function showWelcomeView() {
+  // Hide all content views except progress section
+  document.getElementById('morning-checkin-form').style.display = 'none';
+  document.getElementById('tenth-step-view').style.display = 'none';
+  document.getElementById('journal-view').style.display = 'none';
+  document.getElementById('profile-view').style.display = 'none';
+  document.getElementById('panic-mode-view').style.display = 'none';
+  
+  // Make sure progress section is visible
+  const progressSection = document.getElementById('progress-section');
+  if (progressSection) {
+    progressSection.style.display = 'block';
+  }
+  
+  // Update progress tracking
+  initProgressTracking();
 }
