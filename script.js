@@ -363,56 +363,72 @@ function handleCustomMood() {
 async function submitMorningCheckin(event) {
   event.preventDefault();
   
-  // Collect gratitude items
-  const gratitudeList = [];
-  gratitudeItems.querySelectorAll('.list-item-text').forEach(item => {
-    gratitudeList.push(item.textContent);
-  });
+  // Get form data
+  const gratitudeItems = Array.from(document.getElementById('gratitude-items').children).map(item => item.textContent);
+  const generalPlan = document.getElementById('general-plan').value;
+  const mood = document.getElementById('selected-mood').value;
+  const watchForItems = Array.from(document.getElementById('watch-for-items').children).map(item => item.textContent);
+  const striveForItems = Array.from(document.getElementById('strive-for-items').children).map(item => item.textContent);
   
-  // Get general plan
-  const generalPlanText = generalPlan.value.trim();
-  
-  // Get mood
-  const mood = selectedMood.value || customMood.value || 'Not specified';
-  
-  // Collect watch-for items
-  const watchForList = [];
-  watchForItems.querySelectorAll('.list-item-text').forEach(item => {
-    watchForList.push(item.textContent);
-  });
-  
-  // Collect strive-for items
-  const striveForList = [];
-  striveForItems.querySelectorAll('.list-item-text').forEach(item => {
-    striveForList.push(item.textContent);
-  });
+  const today = new Date().toISOString().split('T')[0];
   
   try {
-    const { data, error } = await _supabase
+    // Get current user
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) {
+      throw new Error('You need to be logged in');
+    }
+    
+    // Check if entry already exists
+    const { data: existingEntry } = await _supabase
       .from('daily_check_ins')
-      .insert({
-        user_id: currentUser.id,
-        date: today.toISOString().split('T')[0],
-        gratitude_list: gratitudeList,
-        general_plan: generalPlanText,
-        current_mood: mood,
-        watch_for_items: watchForList,
-        strive_for_items: striveForList
-      })
-      .select()
-      .single();
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .maybeSingle();
+    
+    if (existingEntry) {
+      // Update existing entry
+      const { error } = await _supabase
+        .from('daily_check_ins')
+        .update({
+          gratitude_list: gratitudeItems,
+          general_plan: generalPlan,
+          current_mood: mood,
+          watch_for_items: watchForItems,
+          strive_for_items: striveForItems,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingEntry.id);
       
-    if (error) throw error;
+      if (error) throw error;
+      showNotification('Morning check-in updated!', 'success');
+    } else {
+      // Create new entry
+      const { error } = await _supabase
+        .from('daily_check_ins')
+        .insert({
+          user_id: user.id,
+          date: today,
+          gratitude_list: gratitudeItems,
+          general_plan: generalPlan,
+          current_mood: mood,
+          watch_for_items: watchForItems,
+          strive_for_items: striveForItems
+        });
+      
+      if (error) throw error;
+      showNotification('Morning check-in saved!', 'success');
+    }
     
-    console.log('Morning check-in saved:', data);
-    todaysMorningCheckin = data;
-    currentMorningCheckinId = data.id;
-    displayCompletedCheckin(data);
-    showMorningView();
+    // Update progress
+    updateProgressAfterMorningCheckIn();
     
+    // Close the modal
+    closeModal('morning-checkin-modal');
   } catch (error) {
     console.error('Error saving morning check-in:', error);
-    alert('There was an error saving your check-in. Please try again.');
+    alert('Error saving check-in: ' + error.message);
   }
 }
 
@@ -984,22 +1000,31 @@ function exitPanicMode() {
 
 // --- Load User Profile ---
 async function loadUserProfile() {
-  if (!currentUser) return;
-
-  console.log("Loading user profile...");
-  if (profileStatus) profileStatus.textContent = 'Loading profile...';
-  if (sobrietyDateInput) sobrietyDateInput.value = ''; 
-  userProfile = null;
-
   try {
-    const { data, error, status } = await _supabase
+    // Get current user
+    const { data: { user }, error: userError } = await _supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user) {
+      console.log("No user found");
+      return;
+    }
+
+    console.log("Loading profile for user:", user.id);
+    if (profileStatus) profileStatus.textContent = 'Loading profile...';
+    if (sobrietyDateInput) sobrietyDateInput.value = ''; 
+    userProfile = null;
+
+    // Get profile data
+    const { data, error } = await _supabase
       .from('profiles')
-      .select(`sobriety_date`)
-      .eq('user_id', currentUser.id)
+      .select('sobriety_date')
+      .eq('user_id', user.id)
       .maybeSingle();
 
-    if (error && status !== 406) {
-      throw error;
+    if (error) {
+      console.error('Error fetching profile:', error);
+      if (profileStatus) profileStatus.textContent = 'Error loading profile.';
+      return;
     }
 
     if (data) {
@@ -1024,23 +1049,40 @@ async function loadUserProfile() {
           
           // Update all day counters
           if (daysCount) daysCount.textContent = daysText;
-          document.querySelectorAll('[id$="days-count"]').forEach(el => {
-            if (el) el.textContent = daysText;
-          });
+          
+          // Update sobriety count in the progress section
+          const sobrietyDaysCount = document.getElementById('sobriety-days-count');
+          if (sobrietyDaysCount) {
+            sobrietyDaysCount.textContent = `${diffDays} days sober`;
+          }
+          
+          console.log(`Updated sobriety days to ${diffDays}`);
         }
         
         if (profileStatus) profileStatus.textContent = 'Profile loaded.';
       } else {
+        console.log("No sobriety date found in profile");
         if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
       }
     } else {
-      console.log("No profile found for user.");
+      console.log("No profile found, creating an empty one");
+      // Create an empty profile
+      const { error: createError } = await _supabase
+        .from('profiles')
+        .insert({
+          user_id: user.id,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (createError) {
+        console.error("Error creating profile:", createError);
+      }
+      
       if (profileStatus) profileStatus.textContent = 'Set your recovery start date.';
     }
   } catch (error) {
-    console.error('Error loading user profile:', error);
+    console.error('Error in loadUserProfile:', error);
     if (profileStatus) profileStatus.textContent = 'Error loading profile.';
-    userProfile = null;
   }
 }
 
@@ -2512,71 +2554,7 @@ function setupCheckInForms() {
     if (morningForm) {
         morningForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            
-            // Get form data
-            const gratitudeItems = Array.from(document.getElementById('gratitude-items').children).map(item => item.textContent);
-            const generalPlan = document.getElementById('general-plan').value;
-            const mood = document.getElementById('selected-mood').value;
-            const watchForItems = Array.from(document.getElementById('watch-for-items').children).map(item => item.textContent);
-            const striveForItems = Array.from(document.getElementById('strive-for-items').children).map(item => item.textContent);
-            
-            const today = new Date().toISOString().split('T')[0];
-            
-            try {
-                // Get current user
-                const { data: { user } } = await _supabase.auth.getUser();
-                if (!user) {
-                    throw new Error('You need to be logged in');
-                }
-                
-                // Check if entry already exists
-                const { data: existingEntry } = await _supabase
-                    .from('daily_check_ins')
-                    .select('id')
-                    .eq('user_id', user.id)
-                    .eq('date', today)
-                    .maybeSingle();
-                
-                if (existingEntry) {
-                    // Update existing entry
-                    const { error } = await _supabase
-                        .from('daily_check_ins')
-                        .update({
-                            gratitude_list: gratitudeItems,
-                            general_plan: generalPlan,
-                            current_mood: mood,
-                            watch_for_items: watchForItems,
-                            strive_for_items: striveForItems,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', existingEntry.id);
-                    
-                    if (error) throw error;
-                    showNotification('Morning check-in updated!', 'success');
-                } else {
-                    // Create new entry
-                    const { error } = await _supabase
-                        .from('daily_check_ins')
-                        .insert({
-                            user_id: user.id,
-                            date: today,
-                            gratitude_list: gratitudeItems,
-                            general_plan: generalPlan,
-                            current_mood: mood,
-                            watch_for_items: watchForItems,
-                            strive_for_items: striveForItems
-                        });
-                    
-                    if (error) throw error;
-                    showNotification('Morning check-in saved!', 'success');
-                }
-                
-                // Update progress
-                updateProgressAfterMorningCheckIn();
-            } catch (error) {
-                console.error('Error saving morning check-in:', error);
-                alert('Error saving check-in: ' + error.message);
-            }
+            await submitMorningCheckin(event);
         });
     }
     
@@ -2585,83 +2563,32 @@ function setupCheckInForms() {
     if (tenthStepForm) {
         tenthStepForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            
-            // Get form data to create tenth step data
-            const tenth_step = {
-                harm_anyone: {
-                    answer: document.querySelector('[data-question="harm_anyone"].active').dataset.value === 'yes',
-                    reflection: document.getElementById('harm-reflection').value
-                },
-                resentment: {
-                    answer: document.querySelector('[data-question="resentment"].active').dataset.value === 'yes',
-                    reflection: document.getElementById('resentment-reflection').value
-                },
-                fear_anxiety: {
-                    answer: document.querySelector('[data-question="fear_anxiety"].active').dataset.value === 'yes',
-                    reflection: document.getElementById('fear-reflection').value
-                },
-                selfish: {
-                    answer: document.querySelector('[data-question="selfish"].active').dataset.value === 'yes',
-                    reflection: document.getElementById('selfish-reflection').value
-                },
-                apology: {
-                    answer: document.querySelector('[data-question="apology"].active').dataset.value === 'yes',
-                    reflection: document.getElementById('apology-reflection').value
-                }
-            };
-            
-            const today = new Date().toISOString().split('T')[0];
-            
-            try {
-                // Get current user
-                const { data: { user } } = await _supabase.auth.getUser();
-                if (!user) {
-                    throw new Error('You need to be logged in');
-                }
-                
-                // Check if entry already exists
-                const { data: existingEntry } = await _supabase
-                    .from('evening_reviews')
-                    .select('id')
-                    .eq('user_id', user.id)
-                    .eq('date', today)
-                    .maybeSingle();
-                
-                if (existingEntry) {
-                    // Update existing entry
-                    const { error } = await _supabase
-                        .from('evening_reviews')
-                        .update({
-                            tenth_step: tenth_step,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', existingEntry.id);
-                    
-                    if (error) throw error;
-                    showNotification('10th Step updated!', 'success');
-                } else {
-                    // Create new entry
-                    const { error } = await _supabase
-                        .from('evening_reviews')
-                        .insert({
-                            user_id: user.id,
-                            date: today,
-                            tenth_step: tenth_step,
-                            completed_actions: []
-                        });
-                    
-                    if (error) throw error;
-                    showNotification('10th Step saved!', 'success');
-                }
-                
-                // Update progress
-                updateProgressAfterEveningReview();
-            } catch (error) {
-                console.error('Error saving 10th step:', error);
-                alert('Error saving 10th step: ' + error.message);
-            }
+            await submitTenthStep(event);
         });
     }
+    
+    // Toggle buttons for 10th step questions
+    const toggleButtons = document.querySelectorAll('.toggle-button');
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            const question = e.target.dataset.question;
+            const value = e.target.dataset.value;
+            
+            // Remove active class from all buttons in this group
+            document.querySelectorAll(`.toggle-button[data-question="${question}"]`).forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Add active class to clicked button
+            e.target.classList.add('active');
+            
+            // Show/hide reflection area based on yes/no
+            const reflectionArea = document.getElementById(`${question.split('_')[0]}-reflection-area`);
+            if (reflectionArea) {
+                reflectionArea.style.display = value === 'yes' ? 'block' : 'none';
+            }
+        });
+    });
 }
 
 // Load existing check-in data if available
@@ -2859,15 +2786,16 @@ function showNotification(message, type = 'info') {
 
 // Function to set up navigation
 function setupNavigation() {
-    // Navigation buttons at the bottom
+    // Navigation buttons
     const journalBtn = document.getElementById('journal-button');
     const homeBtn = document.getElementById('home-button');
     const profileBtn = document.getElementById('profile-button');
     const panicBtn = document.getElementById('panic-button');
     
-    // Section navigation buttons
+    // Modal buttons
     const viewMorningBtn = document.getElementById('view-morning-btn');
     const viewTenthStepBtn = document.getElementById('view-tenth-step-btn');
+    const closeButtons = document.querySelectorAll('.close-modal');
     
     // Handle navigation to home
     if (homeBtn) {
@@ -2879,8 +2807,6 @@ function setupNavigation() {
     // Handle navigation to journal
     if (journalBtn) {
         journalBtn.addEventListener('click', () => {
-            document.getElementById('morning-checkin-form').style.display = 'none';
-            document.getElementById('tenth-step-view').style.display = 'none';
             document.getElementById('journal-view').style.display = 'block';
             document.getElementById('profile-view').style.display = 'none';
             document.getElementById('panic-mode-view').style.display = 'none';
@@ -2893,8 +2819,6 @@ function setupNavigation() {
     // Handle navigation to profile
     if (profileBtn) {
         profileBtn.addEventListener('click', () => {
-            document.getElementById('morning-checkin-form').style.display = 'none';
-            document.getElementById('tenth-step-view').style.display = 'none';
             document.getElementById('journal-view').style.display = 'none';
             document.getElementById('profile-view').style.display = 'block';
             document.getElementById('panic-mode-view').style.display = 'none';
@@ -2904,43 +2828,35 @@ function setupNavigation() {
     // Handle panic button
     if (panicBtn) {
         panicBtn.addEventListener('click', () => {
-            document.getElementById('morning-checkin-form').style.display = 'none';
-            document.getElementById('tenth-step-view').style.display = 'none';
             document.getElementById('journal-view').style.display = 'none';
             document.getElementById('profile-view').style.display = 'none';
             document.getElementById('panic-mode-view').style.display = 'block';
         });
     }
     
-    // Handle morning check-in button - key issue to fix
+    // Open morning check-in modal
     if (viewMorningBtn) {
-        viewMorningBtn.addEventListener('click', async () => {
-            console.log('Morning check-in button clicked');
-            document.getElementById('morning-checkin-form').style.display = 'block';
-            document.getElementById('tenth-step-view').style.display = 'none';
-            document.getElementById('journal-view').style.display = 'none';
-            document.getElementById('profile-view').style.display = 'none';
-            document.getElementById('panic-mode-view').style.display = 'none';
-            
-            // Load existing data
-            await loadCheckInData();
+        viewMorningBtn.addEventListener('click', () => {
+            console.log('Opening Morning Check-in modal');
+            openModal('morning-checkin-modal');
         });
     }
     
-    // Handle 10th step button - key issue to fix
+    // Open 10th step modal
     if (viewTenthStepBtn) {
-        viewTenthStepBtn.addEventListener('click', async () => {
-            console.log('10th step button clicked');
-            document.getElementById('morning-checkin-form').style.display = 'none';
-            document.getElementById('tenth-step-view').style.display = 'block';
-            document.getElementById('journal-view').style.display = 'none';
-            document.getElementById('profile-view').style.display = 'none';
-            document.getElementById('panic-mode-view').style.display = 'none';
-            
-            // Load existing data
-            await loadCheckInData();
+        viewTenthStepBtn.addEventListener('click', () => {
+            console.log('Opening 10th Step modal');
+            openModal('tenth-step-modal');
         });
     }
+    
+    // Set up close buttons for all modals
+    closeButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const modalId = button.getAttribute('data-modal');
+            closeModal(modalId);
+        });
+    });
 }
 
 // Function to show welcome/progress view after login
@@ -2960,4 +2876,149 @@ function showWelcomeView() {
   
   // Update progress tracking
   initProgressTracking();
+}
+
+// Make sure setupNavigation gets called during initialization
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM fully loaded. Setting up navigation...');
+  setupNavigation();
+  setupCheckInForms();
+  
+  // Add global click event listener to debug button clicks
+  document.addEventListener('click', (e) => {
+    if (e.target.nodeName === 'BUTTON' || e.target.closest('button')) {
+      const button = e.target.nodeName === 'BUTTON' ? e.target : e.target.closest('button');
+      console.log('Button clicked:', button.id || button.className || 'unnamed button');
+    }
+  });
+  
+  // Update form submissions to close modals
+  const morningForm = document.getElementById('morning-form');
+  if (morningForm) {
+    morningForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await submitMorningCheckin(event);
+      closeModal('morning-checkin-modal');
+    });
+  }
+  
+  const tenthStepForm = document.getElementById('tenth-step-form');
+  if (tenthStepForm) {
+    tenthStepForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await submitTenthStep(event);
+      closeModal('tenth-step-modal');
+    });
+  }
+});
+
+// Functions to show and hide modals
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Prevent scrolling behind modal
+    
+    // Load data for this modal if needed
+    if (modalId === 'morning-checkin-modal' || modalId === 'tenth-step-modal') {
+      loadCheckInData().catch(err => console.error('Error loading check-in data:', err));
+    }
+  }
+}
+
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.style.overflow = ''; // Restore scrolling
+  }
+}
+
+// Close modal when clicking outside the content
+window.onclick = function(event) {
+  if (event.target.classList.contains('modal')) {
+    closeModal(event.target.id);
+  }
+};
+
+async function submitTenthStep(event) {
+  event.preventDefault();
+  
+  // Get form data to create tenth step data
+  const tenth_step = {
+    harm_anyone: {
+      answer: document.querySelector('[data-question="harm_anyone"].active').dataset.value === 'yes',
+      reflection: document.getElementById('harm-reflection').value
+    },
+    resentment: {
+      answer: document.querySelector('[data-question="resentment"].active').dataset.value === 'yes',
+      reflection: document.getElementById('resentment-reflection').value
+    },
+    fear_anxiety: {
+      answer: document.querySelector('[data-question="fear_anxiety"].active').dataset.value === 'yes',
+      reflection: document.getElementById('fear-reflection').value
+    },
+    selfish: {
+      answer: document.querySelector('[data-question="selfish"].active').dataset.value === 'yes',
+      reflection: document.getElementById('selfish-reflection').value
+    },
+    apology: {
+      answer: document.querySelector('[data-question="apology"].active').dataset.value === 'yes',
+      reflection: document.getElementById('apology-reflection').value
+    }
+  };
+  
+  const today = new Date().toISOString().split('T')[0];
+  
+  try {
+    // Get current user
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) {
+      throw new Error('You need to be logged in');
+    }
+    
+    // Check if entry already exists
+    const { data: existingEntry } = await _supabase
+      .from('evening_reviews')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .maybeSingle();
+    
+    if (existingEntry) {
+      // Update existing entry
+      const { error } = await _supabase
+        .from('evening_reviews')
+        .update({
+          tenth_step: tenth_step,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingEntry.id);
+      
+      if (error) throw error;
+      showNotification('10th Step updated!', 'success');
+    } else {
+      // Create new entry
+      const { error } = await _supabase
+        .from('evening_reviews')
+        .insert({
+          user_id: user.id,
+          date: today,
+          tenth_step: tenth_step,
+          completed_actions: []
+        });
+      
+      if (error) throw error;
+      showNotification('10th Step saved!', 'success');
+    }
+    
+    // Update progress
+    updateProgressAfterEveningReview();
+    
+    // Close the modal
+    closeModal('tenth-step-modal');
+  } catch (error) {
+    console.error('Error saving 10th step:', error);
+    alert('Error saving 10th step: ' + error.message);
+  }
 }

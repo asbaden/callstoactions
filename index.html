@@ -52,31 +52,33 @@
                         <div class="progress-fill" style="width: 0%;"></div>
                     </div>
                 </div>
+                
+                <!-- Action buttons in card -->
+                <div class="action-buttons-container">
+                    <button id="view-morning-btn" class="action-button morning">
+                        <span class="material-icons">wb_sunny</span>
+                        Morning Check-in
+                    </button>
+                    <button id="view-tenth-step-btn" class="action-button evening">
+                        <span class="material-icons">nights_stay</span>
+                        10th Step
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="auth-section">
-        <!-- Authentication elements -->
-        <div class="container">
-            <div class="card">
-                <h2>Welcome to Calls to Actions</h2>
-                <p>Your personal recovery support companion</p>
-                <button id="login-button" class="button button-primary">Login / Sign Up</button>
-                <button id="logout-button" class="button button-text" style="display: none;">Logout</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="main-content" style="display: none;">
-        <!-- Morning Check-in Form -->
-        <div id="morning-checkin-form" class="container">
-            <div class="card">
+    <!-- Morning Check-in Modal -->
+    <div id="morning-checkin-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
                 <h2 class="section-title">
                     <span class="material-icons section-icon">wb_sunny</span>
                     Morning Check-in
                 </h2>
-                
+                <button class="close-modal" data-modal="morning-checkin-modal">&times;</button>
+            </div>
+            <div class="modal-body">
                 <form id="morning-form">
                     <!-- Gratitude List -->
                     <div class="form-section">
@@ -152,14 +154,19 @@
                 </form>
             </div>
         </div>
-        
-        <!-- 10th Step Inventory View -->
-        <div id="tenth-step-view" class="container" style="display: none;">
-            <div class="card">
+    </div>
+
+    <!-- 10th Step Modal -->
+    <div id="tenth-step-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
                 <h2 class="section-title">
                     <span class="material-icons section-icon">nights_stay</span>
                     10th Step Inventory
                 </h2>
+                <button class="close-modal" data-modal="tenth-step-modal">&times;</button>
+            </div>
+            <div class="modal-body">
                 <p class="inventory-quote">"Continued to take personal inventory and when we were wrong promptly admitted it."</p>
                 
                 <form id="tenth-step-form">
@@ -229,21 +236,21 @@
                 </form>
             </div>
         </div>
-        
-        <!-- Actions Button Row -->
-        <div class="container action-buttons-container">
-            <div class="action-buttons">
-                <button id="view-morning-btn" class="button button-secondary">
-                    <span class="material-icons">wb_sunny</span>
-                    Morning Check-in
-                </button>
-                <button id="view-tenth-step-btn" class="button button-secondary">
-                    <span class="material-icons">nights_stay</span>
-                    10th Step
-                </button>
+    </div>
+
+    <div id="auth-section">
+        <!-- Authentication elements -->
+        <div class="container">
+            <div class="card">
+                <h2>Welcome to Calls to Actions</h2>
+                <p>Your personal recovery support companion</p>
+                <button id="login-button" class="button button-primary">Login / Sign Up</button>
+                <button id="logout-button" class="button button-text" style="display: none;">Logout</button>
             </div>
         </div>
-        
+    </div>
+
+    <div id="main-content" style="display: none;">
         <!-- Journal View -->
         <div id="journal-view" class="container" style="display: none;">
             <div class="card">
