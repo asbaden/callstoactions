@@ -101,6 +101,13 @@ const updateUI = (user) => {
     // User is logged in
     authSection.style.display = 'none';
     mainContent.style.display = 'block';
+    
+    // Show progress section
+    const progressSection = document.getElementById('progress-section');
+    if (progressSection) {
+      progressSection.style.display = 'block';
+    }
+    
     checkTodaysMorningCheckin(); // Check if user has completed morning check-in
     loadUserProfile(); // Load profile data including sobriety date
     console.log('UI Updated: User logged in:', user.email);
@@ -108,6 +115,13 @@ const updateUI = (user) => {
     // User is logged out
     authSection.style.display = 'block';
     mainContent.style.display = 'none';
+    
+    // Hide progress section
+    const progressSection = document.getElementById('progress-section');
+    if (progressSection) {
+      progressSection.style.display = 'none';
+    }
+    
     if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
     if (profileStatus) profileStatus.textContent = ''; // Clear profile status
     console.log('UI Updated: User logged out');
@@ -1967,10 +1981,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (error) {
         console.error('Error starting Google sign-in:', error);
         alert('Error starting sign-in: ' + error.message);
-      }
+        }
     });
-  }
-  
+}
+
   if (logoutButton) {
     logoutButton.addEventListener('click', async () => {
       console.log('Logout button clicked');
@@ -2057,9 +2071,18 @@ document.addEventListener('DOMContentLoaded', () => {
     customMood.addEventListener('input', handleCustomMood);
   }
   
-  // Form submission
+  // Form submission with progress tracking
   if (morningForm) {
-    morningForm.addEventListener('submit', submitMorningCheckin);
+    const originalSubmit = morningForm.onsubmit;
+    morningForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      await submitMorningCheckin(event);
+      
+      // Update progress after submission completes successfully
+      setTimeout(() => {
+        updateProgressAfterMorningCheckIn();
+      }, 500);
+    });
   }
   
   // View switching
@@ -2093,9 +2116,18 @@ document.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', handleToggleButton);
   });
   
-  // 10th Step Form Submission
+  // 10th Step Form Submission with progress tracking
   if (tenthStepForm) {
-    tenthStepForm.addEventListener('submit', submitEveningReview);
+    const originalSubmit = tenthStepForm.onsubmit;
+    tenthStepForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      await submitEveningReview(event);
+      
+      // Update progress after submission completes successfully
+      setTimeout(() => {
+        updateProgressAfterEveningReview();
+      }, 500);
+    });
   }
   
   // Panic Mode
@@ -2124,9 +2156,314 @@ document.addEventListener('DOMContentLoaded', () => {
         const entryItem = e.target.closest('.journal-item');
         // Toggle active class for styling
         entryItem.classList.toggle('active');
-        
-        // You could implement showing more details here
       }
     });
   }
+
+  // Initialize progress tracking when user is authenticated
+  _supabase.auth.onAuthStateChange((event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+      // Wait a bit for user profile to load
+      setTimeout(() => {
+        if (currentUser) {
+          console.log('Initializing progress tracking...');
+          initProgressTracking();
+        }
+      }, 1000);
+    }
+  });
+  
+  // Check if user is already signed in
+  _supabase.auth.getSession().then(({ data: { session }}) => {
+    if (session) {
+      // Wait a bit for user profile to load
+      setTimeout(() => {
+        if (currentUser) {
+          console.log('User already signed in, initializing progress tracking...');
+          initProgressTracking();
+        }
+      }, 1000);
+    }
+  });
 });
+
+// --- Progress Tracking Variables and Functions ---
+let weekStartDate = null;
+let todayProgress = 0; // 0%, 50%, or 100%
+let weekProgress = {}; // Map of dates to progress values
+
+// Function to initialize the progress tracking
+function initProgressTracking() {
+  // Calculate the start of the current week (Sunday)
+  const today = new Date();
+  weekStartDate = new Date(today);
+  weekStartDate.setDate(today.getDate() - today.getDay()); // Go back to Sunday
+  
+  // Generate dates for the week
+  renderWeekView();
+  
+  // Check progress for the entire week
+  checkWeekProgress();
+  
+  // Show the progress section
+  const progressSection = document.getElementById('progress-section');
+  if (progressSection) {
+    progressSection.style.display = 'block';
+  }
+}
+
+// Function to render the week view
+function renderWeekView() {
+  const weekView = document.querySelector('.week-view');
+  if (!weekView) return;
+  
+  const weekHeader = document.createElement('div');
+  weekHeader.className = 'week-header';
+  
+  const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  dayLabels.forEach(label => {
+    const dayLabel = document.createElement('div');
+    dayLabel.className = 'day-label';
+    dayLabel.textContent = label;
+    weekHeader.appendChild(dayLabel);
+  });
+  
+  const weekDays = document.createElement('div');
+  weekDays.className = 'week-days';
+  
+  // Create 7 days starting from weekStartDate
+  for (let i = 0; i < 7; i++) {
+    const currentDate = new Date(weekStartDate);
+    currentDate.setDate(currentDate.getDate() + i);
+    const dateString = currentDate.toISOString().split('T')[0];
+    
+    const dayElement = createDayElement(currentDate, dateString);
+    weekDays.appendChild(dayElement);
+  }
+  
+  // Clear and append to week view
+  weekView.innerHTML = '';
+  weekView.appendChild(weekHeader);
+  weekView.appendChild(weekDays);
+}
+
+// Function to create a single day element
+function createDayElement(date, dateString) {
+  const dayCircle = document.createElement('div');
+  dayCircle.className = 'day-circle';
+  dayCircle.dataset.date = dateString;
+  
+  // Check if current day
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  
+  const isToday = date.getTime() === today.getTime();
+  
+  if (isToday) {
+    dayCircle.classList.add('current');
+  }
+  
+  const dayNumber = document.createElement('div');
+  dayNumber.className = 'day-number';
+  dayNumber.textContent = date.getDate();
+  
+  const dayProgress = document.createElement('div');
+  dayProgress.className = 'day-progress empty';
+  
+  // Add flame icon
+  const flameIcon = document.createElement('div');
+  flameIcon.className = 'flame-icon';
+  flameIcon.innerHTML = '🔥';
+  dayProgress.appendChild(flameIcon);
+  
+  // Add click event to view entries for this day
+  dayCircle.addEventListener('click', () => viewDayEntries(dateString));
+  
+  dayCircle.appendChild(dayNumber);
+  dayCircle.appendChild(dayProgress);
+  
+  return dayCircle;
+}
+
+// Function to check progress for the entire week
+async function checkWeekProgress() {
+  if (!currentUser) return;
+  
+  try {
+    // For each day in the week
+    for (let i = 0; i < 7; i++) {
+      const currentDate = new Date(weekStartDate);
+      currentDate.setDate(currentDate.getDate() + i);
+      const dateString = currentDate.toISOString().split('T')[0];
+      
+      // Check both morning and evening entries
+      await checkDayProgress(dateString);
+    }
+  } catch (error) {
+    console.error('Error checking week progress:', error);
+  }
+}
+
+// Function to check and update a specific day's progress
+async function checkDayProgress(dateString) {
+  try {
+    // Check if morning check-in exists for the date
+    const morningCheckIn = await checkMorningCheckIn(dateString);
+    
+    // Check if evening review exists for the date
+    const eveningReview = await checkEveningReview(dateString);
+    
+    // Update progress based on completed items
+    if (eveningReview) {
+      updateProgress(dateString, 100); // Both morning and evening completed
+    } else if (morningCheckIn) {
+      updateProgress(dateString, 50); // Only morning completed
+    } else {
+      updateProgress(dateString, 0); // Nothing completed
+    }
+    
+    // If this is today, update journey status text
+    const today = new Date().toISOString().split('T')[0];
+    if (dateString === today) {
+      updateJourneyStatus(weekProgress[dateString] || 0);
+    }
+    
+  } catch (error) {
+    console.error(`Error checking progress for ${dateString}:`, error);
+  }
+}
+
+// Check if morning check-in exists for a specific date
+async function checkMorningCheckIn(date) {
+  if (!currentUser) return false;
+  
+  try {
+    const { data, error } = await _supabase
+      .from('daily_check_ins')
+      .select('id')
+      .eq('user_id', currentUser.id)
+      .eq('date', date)
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data ? true : false;
+  } catch (error) {
+    console.error('Error checking morning check-in:', error);
+    return false;
+  }
+}
+
+// Check if evening review exists for a specific date
+async function checkEveningReview(date) {
+  if (!currentUser) return false;
+  
+  try {
+    const { data, error } = await _supabase
+      .from('evening_reviews')
+      .select('id')
+      .eq('user_id', currentUser.id)
+      .eq('date', date)
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data ? true : false;
+  } catch (error) {
+    console.error('Error checking evening review:', error);
+    return false;
+  }
+}
+
+// Update the progress UI
+function updateProgress(date, progress) {
+  // Store progress in our tracking object
+  weekProgress[date] = progress;
+  
+  // If it's today, update the main progress
+  const today = new Date().toISOString().split('T')[0];
+  if (date === today) {
+    todayProgress = progress;
+    
+    // Update progress percentage
+    const progressPercentage = document.querySelector('.progress-percentage');
+    if (progressPercentage) {
+      progressPercentage.textContent = `${progress}%`;
+    }
+    
+    // Update progress bar
+    const progressFill = document.querySelector('.progress-fill');
+    if (progressFill) {
+      progressFill.style.width = `${progress}%`;
+    }
+  }
+  
+  // Update the specific day in the week view
+  const dayElement = document.querySelector(`.day-circle[data-date="${date}"]`);
+  if (dayElement) {
+    const dayProgress = dayElement.querySelector('.day-progress');
+    if (dayProgress) {
+      // Reset classes
+      dayProgress.classList.remove('empty', 'half-filled', 'filled');
+      
+      // Set appropriate class
+      if (progress >= 100) {
+        dayProgress.classList.add('filled');
+      } else if (progress >= 50) {
+        dayProgress.classList.add('half-filled');
+      } else {
+        dayProgress.classList.add('empty');
+      }
+    }
+  }
+}
+
+// Update the journey status text
+function updateJourneyStatus(progress) {
+  const journeyStatus = document.getElementById('journey-status');
+  if (!journeyStatus) return;
+  
+  if (progress >= 100) {
+    journeyStatus.textContent = 'Journey Complete for Today!';
+  } else if (progress >= 50) {
+    journeyStatus.textContent = 'Halfway There';
+  } else {
+    journeyStatus.textContent = 'Starting Your Journey';
+  }
+}
+
+// Function to view entries for a specific day
+function viewDayEntries(date) {
+  // This could either redirect to a filtered journal view
+  // or open a modal with entries from this date
+  console.log(`Viewing entries for ${date}`);
+  
+  // Format the date more nicely for display
+  const formattedDate = new Date(date).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  
+  // Basic alert for now - would be better with a proper modal or navigation
+  alert(`Entries for ${formattedDate}\n\nProgress: ${weekProgress[date] || 0}%\n\nClick OK to view in journal.`);
+  
+  // Show journal view (could be enhanced to filter by date)
+  showJournalView();
+}
+
+// Function to update progress after morning check-in
+function updateProgressAfterMorningCheckIn() {
+  const today = new Date().toISOString().split('T')[0];
+  updateProgress(today, 50);
+  updateJourneyStatus(50);
+  console.log('Updated progress after morning check-in');
+}
+
+// Function to update progress after evening review
+function updateProgressAfterEveningReview() {
+  const today = new Date().toISOString().split('T')[0];
+  updateProgress(today, 100);
+  updateJourneyStatus(100);
+  console.log('Updated progress after evening review');
+}
