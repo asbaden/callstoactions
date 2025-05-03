@@ -14,16 +14,8 @@
             <span class="recovery-tag">Recovery</span>
         </div>
         <div class="header-right">
-            <div class="sobriety-counter">
-                <span id="days-count">0 days</span>
-                <button id="edit-days-btn" class="button-text">Edit</button>
-            </div>
             <button id="history-btn" class="button-text">History</button>
             <button id="settings-btn" class="button-text">Settings</button>
-            <button id="panic-mode-btn" class="panic-button">
-                <span class="material-icons">warning</span>
-                Panic Mode
-            </button>
         </div>
     </header>
 
@@ -33,7 +25,7 @@
             <div class="card">
                 <h2 class="section-title">
                     Today's Journey
-                    <span id="sobriety-days-count" class="sobriety-count">0 days sober</span>
+                    <span id="sobriety-days-count" class="sobriety-count clickable" onclick="showProfileView()">0 days sober</span>
                 </h2>
                 <p class="section-subtitle" id="journey-status">Start your day with intention.</p>
                 
@@ -274,9 +266,13 @@
                 <h2 class="section-title">Your Recovery Profile</h2>
                 
                 <div class="profile-section">
-                    <label for="sobriety-date">Recovery Start Date:</label>
-                    <input type="date" id="sobriety-date" name="sobriety-date">
-                    <button id="save-profile-button" class="button button-primary">Save Date</button>
+                    <h3>Recovery Date</h3>
+                    <p>Set your sobriety date. If you've relapsed, you can update this date.</p>
+                    <div class="date-input-container">
+                        <label for="sobriety-date">Recovery Start Date:</label>
+                        <input type="date" id="sobriety-date" name="sobriety-date" class="prominent-input">
+                        <button id="save-profile-button" class="button button-primary">Save Date</button>
+                    </div>
                     <p id="profile-status"></p>
                 </div>
             </div>

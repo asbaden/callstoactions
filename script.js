@@ -215,6 +215,14 @@ function showProfileView() {
   journalView.style.display = 'none';
   profileView.style.display = 'block';
   panicModeView.style.display = 'none';
+  
+  // Focus on the sobriety date input after a short delay to ensure the view is visible
+  setTimeout(() => {
+    const sobrietyDateInput = document.getElementById('sobriety-date');
+    if (sobrietyDateInput) {
+      sobrietyDateInput.focus();
+    }
+  }, 100);
 }
 
 function showPanicMode() {
@@ -1098,14 +1106,27 @@ async function saveUserProfile() {
     }
 
     console.log("Profile saved successfully.");
-    if(profileStatus) profileStatus.textContent = 'Date saved successfully!';
+    
+    // Calculate days sober for the message
+    const today = new Date();
+    const startDate = new Date(sobrietyDate);
+    const diffTime = Math.abs(today - startDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if(profileStatus) {
+      profileStatus.textContent = `Recovery date updated! You have been sober for ${diffDays} days.`;
+      profileStatus.style.color = '#4caf50';
+    }
     
     // Update the sobriety days display
     updateSobrietyDaysDisplay();
 
   } catch (error) {
     console.error('Error saving user profile:', error);
-    if(profileStatus) profileStatus.textContent = 'Error saving date: ' + error.message;
+    if(profileStatus) {
+      profileStatus.textContent = 'Error saving date: ' + error.message;
+      profileStatus.style.color = '#f44336';
+    }
   }
 }
 
@@ -2062,6 +2083,8 @@ document.addEventListener('DOMContentLoaded', () => {
     settingsBtn.addEventListener('click', showProfileView);
   }
   
+  // The following buttons were removed from the UI
+  /*
   if (editDaysBtn) {
     editDaysBtn.addEventListener('click', showProfileView);
   }
@@ -2069,6 +2092,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (panicModeBtn) {
     panicModeBtn.addEventListener('click', showPanicMode);
   }
+  */
   
   // Morning Check-in Form
   if (addGratitudeBtn) {
@@ -2556,10 +2580,8 @@ async function updateSobrietyDaysDisplay() {
         const diffTime = Math.abs(today - sobrietyDate);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        // Update all sobriety counters with consistent format
+        // Update sobriety days count
         const sobrietyDaysCount = document.getElementById('sobriety-days-count');
-        const daysCountHeader = document.getElementById('days-count');
-        
         const daysText = `${diffDays} days sober`;
         
         if (sobrietyDaysCount) {
@@ -2567,13 +2589,6 @@ async function updateSobrietyDaysDisplay() {
           console.log("Updated sobriety-days-count to:", daysText);
         } else {
           console.log("sobriety-days-count element not found");
-        }
-        
-        if (daysCountHeader) {
-          daysCountHeader.textContent = daysText;
-          console.log("Updated days-count in header to:", daysText);
-        } else {
-          console.log("days-count element not found");
         }
         
         console.log(`Updated sobriety days to ${diffDays} days sober`);
@@ -3129,3 +3144,6 @@ async function submitTenthStep(event) {
     alert('Error saving 10th step: ' + error.message);
   }
 }
+
+// Make sure showProfileView is accessible globally
+window.showProfileView = showProfileView;
