@@ -171,67 +171,124 @@ const { data: { subscription } } = _supabase.auth.onAuthStateChange((event, sess
 
 // --- View Management Functions ---
 function showMorningForm() {
-  morningCheckinForm.style.display = 'block';
-  morningCheckinView.style.display = 'none';
-  eveningReview.style.display = 'none';
-  journalView.style.display = 'none';
-  profileView.style.display = 'none';
-  panicModeView.style.display = 'none';
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const morningCheckinViewEl = document.getElementById('morning-checkin-view');
+  const eveningReviewEl = document.getElementById('evening-review');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  
+  // Show the morning checkin form and hide others
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'block';
+  if (morningCheckinViewEl) morningCheckinViewEl.style.display = 'none';
+  if (eveningReviewEl) eveningReviewEl.style.display = 'none';
+  if (journalViewEl) journalViewEl.style.display = 'none';
+  if (profileViewEl) profileViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'none';
 }
 
 function showMorningView() {
-  morningCheckinForm.style.display = 'none';
-  morningCheckinView.style.display = 'block';
-  eveningReview.style.display = 'none';
-  journalView.style.display = 'none';
-  profileView.style.display = 'none';
-  panicModeView.style.display = 'none';
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const morningCheckinViewEl = document.getElementById('morning-checkin-view');
+  const eveningReviewEl = document.getElementById('evening-review');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'none';
+  if (morningCheckinViewEl) morningCheckinViewEl.style.display = 'block';
+  if (eveningReviewEl) eveningReviewEl.style.display = 'none';
+  if (journalViewEl) journalViewEl.style.display = 'none';
+  if (profileViewEl) profileViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'none';
 }
 
 function showEveningReview() {
-  morningCheckinForm.style.display = 'none';
-  morningCheckinView.style.display = 'none';
-  eveningReview.style.display = 'block';
-  journalView.style.display = 'none';
-  profileView.style.display = 'none';
-  panicModeView.style.display = 'none';
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const morningCheckinViewEl = document.getElementById('morning-checkin-view');
+  const eveningReviewEl = document.getElementById('evening-review');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'none';
+  if (morningCheckinViewEl) morningCheckinViewEl.style.display = 'none';
+  if (eveningReviewEl) eveningReviewEl.style.display = 'block';
+  if (journalViewEl) journalViewEl.style.display = 'none';
+  if (profileViewEl) profileViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'none';
+  
   loadDailyReviewData();
 }
 
 function showJournalView() {
-  morningCheckinForm.style.display = 'none';
-  morningCheckinView.style.display = 'none';
-  eveningReview.style.display = 'none';
-  journalView.style.display = 'block';
-  profileView.style.display = 'none';
-  panicModeView.style.display = 'none';
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const morningCheckinViewEl = document.getElementById('morning-checkin-view');
+  const eveningReviewEl = document.getElementById('evening-review');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'none';
+  if (morningCheckinViewEl) morningCheckinViewEl.style.display = 'none';
+  if (eveningReviewEl) eveningReviewEl.style.display = 'none';
+  if (journalViewEl) journalViewEl.style.display = 'block';
+  if (profileViewEl) profileViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'none';
+  
   loadJournalEntries();
 }
 
+function showPanicMode() {
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const morningCheckinViewEl = document.getElementById('morning-checkin-view');
+  const eveningReviewEl = document.getElementById('evening-review');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'none';
+  if (morningCheckinViewEl) morningCheckinViewEl.style.display = 'none';
+  if (eveningReviewEl) eveningReviewEl.style.display = 'none';
+  if (journalViewEl) journalViewEl.style.display = 'none';
+  if (profileViewEl) profileViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'block';
+}
+
 function showProfileView() {
-  morningCheckinForm.style.display = 'none';
-  morningCheckinView.style.display = 'none';
-  eveningReview.style.display = 'none';
-  journalView.style.display = 'none';
-  profileView.style.display = 'block';
-  panicModeView.style.display = 'none';
+  // Get references to all view elements using getElementById
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const morningCheckinViewEl = document.getElementById('morning-checkin-view');
+  const eveningReviewEl = document.getElementById('evening-review');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  
+  // Hide all views safely
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'none';
+  if (morningCheckinViewEl) morningCheckinViewEl.style.display = 'none';
+  if (eveningReviewEl) eveningReviewEl.style.display = 'none';
+  if (journalViewEl) journalViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'none';
+  
+  // Show the profile view
+  if (profileViewEl) {
+    profileViewEl.style.display = 'block';
+    console.log("Showing profile view");
+  } else {
+    console.error("Profile view element not found!");
+  }
   
   // Focus on the sobriety date input after a short delay to ensure the view is visible
   setTimeout(() => {
     const sobrietyDateInput = document.getElementById('sobriety-date');
     if (sobrietyDateInput) {
       sobrietyDateInput.focus();
+      console.log("Focused on sobriety date input");
+    } else {
+      console.error("Sobriety date input not found");
     }
   }, 100);
-}
-
-function showPanicMode() {
-  morningCheckinForm.style.display = 'none';
-  morningCheckinView.style.display = 'none';
-  eveningReview.style.display = 'none';
-  journalView.style.display = 'none';
-  profileView.style.display = 'none';
-  panicModeView.style.display = 'block';
 }
 
 // --- Switching Between Daily Review and 10th Step Tabs ---
@@ -2618,17 +2675,27 @@ async function updateSobrietyDaysDisplay() {
 
 // Function to show welcome/progress view after login
 function showWelcomeView() {
+  // Get all content view elements
+  const morningCheckinFormEl = document.getElementById('morning-checkin-form');
+  const tenthStepViewEl = document.getElementById('tenth-step-view');
+  const journalViewEl = document.getElementById('journal-view');
+  const profileViewEl = document.getElementById('profile-view');
+  const panicModeViewEl = document.getElementById('panic-mode-view');
+  const progressSectionEl = document.getElementById('progress-section');
+  
   // Hide all content views except progress section
-  document.getElementById('morning-checkin-form').style.display = 'none';
-  document.getElementById('tenth-step-view').style.display = 'none';
-  document.getElementById('journal-view').style.display = 'none';
-  document.getElementById('profile-view').style.display = 'none';
-  document.getElementById('panic-mode-view').style.display = 'none';
+  if (morningCheckinFormEl) morningCheckinFormEl.style.display = 'none';
+  if (tenthStepViewEl) tenthStepViewEl.style.display = 'none';
+  if (journalViewEl) journalViewEl.style.display = 'none';
+  if (profileViewEl) profileViewEl.style.display = 'none';
+  if (panicModeViewEl) panicModeViewEl.style.display = 'none';
   
   // Make sure progress section is visible
-  const progressSection = document.getElementById('progress-section');
-  if (progressSection) {
-    progressSection.style.display = 'block';
+  if (progressSectionEl) {
+    progressSectionEl.style.display = 'block';
+    console.log("Showing welcome view with progress section");
+  } else {
+    console.error("Progress section element not found");
   }
   
   // Update progress tracking
