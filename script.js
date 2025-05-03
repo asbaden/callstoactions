@@ -96,35 +96,55 @@ const formattedDate = today.toLocaleDateString('en-US', {
 
 // --- Auth State Management ---
 const updateUI = (user) => {
-  currentUser = user;
+  const authSection = document.getElementById('auth-section');
+  const mainContent = document.getElementById('main-content');
+  const progressSection = document.getElementById('progress-section');
+  const userNameDisplay = document.getElementById('user-name');
+
   if (user) {
-    // User is logged in
-    authSection.style.display = 'none';
-    mainContent.style.display = 'block';
+    // User is signed in
+    if (authSection) authSection.style.display = 'none';
+    if (mainContent) mainContent.style.display = 'block';
+    if (progressSection) progressSection.style.display = 'block';
+    if (userNameDisplay) userNameDisplay.textContent = user.displayName || user.email;
     
-    // Show progress section
-    const progressSection = document.getElementById('progress-section');
-    if (progressSection) {
-      progressSection.style.display = 'block';
-    }
+    // Show morning check-in by default, hide other views
+    document.getElementById('morning-checkin-form').style.display = 'block';
+    document.getElementById('tenth-step-view').style.display = 'none';
+    document.getElementById('journal-view').style.display = 'none';
+    document.getElementById('profile-view').style.display = 'none';
+    document.getElementById('panic-mode-view').style.display = 'none';
     
-    checkTodaysMorningCheckin(); // Check if user has completed morning check-in
-    loadUserProfile(); // Load profile data including sobriety date
-    console.log('UI Updated: User logged in:', user.email);
+    // Update sobriety days display
+    updateSobrietyDaysDisplay();
+    
+    // Check for existing check-ins
+    loadCheckInData();
+    
+    // Load user profile
+    loadUserProfile();
   } else {
-    // User is logged out
-    authSection.style.display = 'block';
-    mainContent.style.display = 'none';
+    // No user is signed in
+    if (authSection) authSection.style.display = 'block';
+    if (mainContent) mainContent.style.display = 'none';
+    if (progressSection) progressSection.style.display = 'none';
+    if (userNameDisplay) userNameDisplay.textContent = '';
     
-    // Hide progress section
-    const progressSection = document.getElementById('progress-section');
-    if (progressSection) {
-      progressSection.style.display = 'none';
-    }
+    // Clear any input fields or status messages
+    const inputs = document.querySelectorAll('input');
+    inputs.forEach(input => {
+      if (input.type !== 'button' && input.type !== 'submit') {
+        input.value = '';
+      }
+    });
     
-    if (sobrietyDateInput) sobrietyDateInput.value = ''; // Clear date input
-    if (profileStatus) profileStatus.textContent = ''; // Clear profile status
-    console.log('UI Updated: User logged out');
+    document.querySelectorAll('textarea').forEach(textarea => {
+      textarea.value = '';
+    });
+    
+    document.querySelectorAll('.status-message').forEach(message => {
+      message.textContent = '';
+    });
   }
 };
 
@@ -2196,16 +2216,20 @@ let weekProgress = {}; // Map of dates to progress values
 function initProgressTracking() {
   // Calculate the start of the current week (Sunday)
   const today = new Date();
-  weekStartDate = new Date(today);
-  weekStartDate.setDate(today.getDate() - today.getDay()); // Go back to Sunday
+  const day = today.getDay(); // 0 for Sunday, 1 for Monday, etc.
+  const weekStartDate = new Date(today);
+  weekStartDate.setDate(today.getDate() - day);
   
-  // Generate dates for the week
-  renderWeekView();
+  // Render the week view
+  renderWeekView(weekStartDate);
   
-  // Check progress for the entire week
+  // Check weekly progress
   checkWeekProgress();
   
-  // Show the progress section
+  // Update sobriety days display
+  updateSobrietyDaysDisplay();
+  
+  // Show progress section
   const progressSection = document.getElementById('progress-section');
   if (progressSection) {
     progressSection.style.display = 'block';
@@ -2213,38 +2237,30 @@ function initProgressTracking() {
 }
 
 // Function to render the week view
-function renderWeekView() {
-  const weekView = document.querySelector('.week-view');
-  if (!weekView) return;
-  
-  const weekHeader = document.createElement('div');
-  weekHeader.className = 'week-header';
-  
-  const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-  dayLabels.forEach(label => {
-    const dayLabel = document.createElement('div');
-    dayLabel.className = 'day-label';
-    dayLabel.textContent = label;
-    weekHeader.appendChild(dayLabel);
-  });
-  
-  const weekDays = document.createElement('div');
-  weekDays.className = 'week-days';
-  
-  // Create 7 days starting from weekStartDate
-  for (let i = 0; i < 7; i++) {
-    const currentDate = new Date(weekStartDate);
-    currentDate.setDate(currentDate.getDate() + i);
-    const dateString = currentDate.toISOString().split('T')[0];
+function renderWeekView(weekStartDate) {
+    const weekView = document.querySelector('.week-view');
+    if (!weekView) return;
     
-    const dayElement = createDayElement(currentDate, dateString);
-    weekDays.appendChild(dayElement);
-  }
-  
-  // Clear and append to week view
-  weekView.innerHTML = '';
-  weekView.appendChild(weekHeader);
-  weekView.appendChild(weekDays);
+    weekView.innerHTML = '';
+    
+    const currentDate = new Date();
+    const today = currentDate.toISOString().split('T')[0];
+    
+    // Create 7 day circles for the week
+    for (let i = 0; i < 7; i++) {
+        const date = new Date(weekStartDate);
+        date.setDate(weekStartDate.getDate() + i);
+        
+        const dateString = date.toISOString().split('T')[0];
+        const dayElement = createDayElement(date, dateString);
+        
+        // Highlight today
+        if (dateString === today) {
+            dayElement.classList.add('today');
+        }
+        
+        weekView.appendChild(dayElement);
+    }
 }
 
 // Function to create a single day element
@@ -2466,4 +2482,328 @@ function updateProgressAfterEveningReview() {
   updateProgress(today, 100);
   updateJourneyStatus(100);
   console.log('Updated progress after evening review');
+}
+
+// Helper function to display the number of sobriety days
+function updateSobrietyDaysDisplay() {
+    const sobrietyDate = localStorage.getItem('sobrietyDate');
+    if (sobrietyDate) {
+        const startDate = new Date(sobrietyDate);
+        const today = new Date();
+        const diffTime = Math.abs(today - startDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        // Update all sobriety day displays
+        document.getElementById('sobriety-days-count').textContent = `${diffDays} days sober`;
+    }
+}
+
+// Update the morning check-in functionality to always be editable
+function setupCheckInForms() {
+    // Morning check-in form
+    const morningForm = document.getElementById('morning-form');
+    if (morningForm) {
+        morningForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            // Get form data
+            const gratitudeItems = Array.from(document.getElementById('gratitude-items').children).map(item => item.textContent);
+            const generalPlan = document.getElementById('general-plan').value;
+            const mood = document.getElementById('selected-mood').value;
+            const watchForItems = Array.from(document.getElementById('watch-for-items').children).map(item => item.textContent);
+            const striveForItems = Array.from(document.getElementById('strive-for-items').children).map(item => item.textContent);
+            
+            // Create check-in data
+            const checkInData = {
+                date: new Date().toISOString().split('T')[0],
+                type: 'morning',
+                gratitude: gratitudeItems,
+                generalPlan: generalPlan,
+                mood: mood,
+                watchFor: watchForItems,
+                striveFor: striveForItems
+            };
+            
+            // Save to Firebase
+            try {
+                const user = auth.currentUser;
+                if (user) {
+                    await db.collection('users').doc(user.uid).collection('journal').doc(checkInData.date + '-morning').set(checkInData);
+                    showNotification('Morning check-in saved!', 'success');
+                    
+                    // Update progress after morning check-in
+                    updateProgressAfterMorningCheckIn();
+                }
+            } catch (error) {
+                console.error('Error saving morning check-in:', error);
+                showNotification('Error saving check-in. Please try again.', 'error');
+            }
+        });
+    }
+    
+    // 10th Step form 
+    const tenthStepForm = document.getElementById('tenth-step-form');
+    if (tenthStepForm) {
+        tenthStepForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            // Get form data
+            const tenthStepData = {
+                date: new Date().toISOString().split('T')[0],
+                type: 'tenth-step',
+                harmAnyone: {
+                    answer: document.querySelector('[data-question="harm_anyone"].active').dataset.value,
+                    reflection: document.getElementById('harm-reflection').value
+                },
+                resentment: {
+                    answer: document.querySelector('[data-question="resentment"].active').dataset.value,
+                    reflection: document.getElementById('resentment-reflection').value
+                },
+                fearAnxiety: {
+                    answer: document.querySelector('[data-question="fear_anxiety"].active').dataset.value,
+                    reflection: document.getElementById('fear-reflection').value
+                },
+                selfish: {
+                    answer: document.querySelector('[data-question="selfish"].active').dataset.value,
+                    reflection: document.getElementById('selfish-reflection').value
+                },
+                apology: {
+                    answer: document.querySelector('[data-question="apology"].active').dataset.value,
+                    reflection: document.getElementById('apology-reflection').value
+                }
+            };
+            
+            // Save to Firebase
+            try {
+                const user = auth.currentUser;
+                if (user) {
+                    await db.collection('users').doc(user.uid).collection('journal').doc(tenthStepData.date + '-tenth-step').set(tenthStepData);
+                    showNotification('10th Step completed!', 'success');
+                    
+                    // Update progress after 10th step
+                    updateProgressAfterEveningReview();
+                }
+            } catch (error) {
+                console.error('Error saving 10th step:', error);
+                showNotification('Error saving 10th step. Please try again.', 'error');
+            }
+        });
+    }
+}
+
+// Load existing check-in data if available
+async function loadCheckInData() {
+    const user = auth.currentUser;
+    if (!user) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    try {
+        // Check for morning check-in
+        const morningDocRef = await db.collection('users').doc(user.uid).collection('journal').doc(today + '-morning').get();
+        
+        if (morningDocRef.exists) {
+            const data = morningDocRef.data();
+            
+            // Populate morning form with existing data
+            document.getElementById('gratitude-items').innerHTML = '';
+            if (data.gratitude) {
+                data.gratitude.forEach(item => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'item';
+                    listItem.textContent = item;
+                    document.getElementById('gratitude-items').appendChild(listItem);
+                });
+            }
+            
+            document.getElementById('general-plan').value = data.generalPlan || '';
+            document.getElementById('selected-mood').value = data.mood || '';
+            
+            // Update mood buttons to reflect selection
+            if (data.mood) {
+                document.querySelectorAll('.mood-button').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.mood === data.mood) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+            
+            document.getElementById('watch-for-items').innerHTML = '';
+            if (data.watchFor) {
+                data.watchFor.forEach(item => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'item';
+                    listItem.textContent = item;
+                    document.getElementById('watch-for-items').appendChild(listItem);
+                });
+            }
+            
+            document.getElementById('strive-for-items').innerHTML = '';
+            if (data.striveFor) {
+                data.striveFor.forEach(item => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'item';
+                    listItem.textContent = item;
+                    document.getElementById('strive-for-items').appendChild(listItem);
+                });
+            }
+        }
+        
+        // Check for 10th step
+        const tenthStepDocRef = await db.collection('users').doc(user.uid).collection('journal').doc(today + '-tenth-step').get();
+        
+        if (tenthStepDocRef.exists) {
+            const data = tenthStepDocRef.data();
+            
+            // Populate 10th step form with existing data
+            if (data.harmAnyone) {
+                document.querySelectorAll('[data-question="harm_anyone"]').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.value === data.harmAnyone.answer) {
+                        btn.classList.add('active');
+                    }
+                });
+                document.getElementById('harm-reflection').value = data.harmAnyone.reflection || '';
+                document.getElementById('harm-reflection-area').style.display = data.harmAnyone.answer === 'yes' ? 'block' : 'none';
+            }
+            
+            if (data.resentment) {
+                document.querySelectorAll('[data-question="resentment"]').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.value === data.resentment.answer) {
+                        btn.classList.add('active');
+                    }
+                });
+                document.getElementById('resentment-reflection').value = data.resentment.reflection || '';
+                document.getElementById('resentment-reflection-area').style.display = data.resentment.answer === 'yes' ? 'block' : 'none';
+            }
+            
+            if (data.fearAnxiety) {
+                document.querySelectorAll('[data-question="fear_anxiety"]').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.value === data.fearAnxiety.answer) {
+                        btn.classList.add('active');
+                    }
+                });
+                document.getElementById('fear-reflection').value = data.fearAnxiety.reflection || '';
+                document.getElementById('fear-reflection-area').style.display = data.fearAnxiety.answer === 'yes' ? 'block' : 'none';
+            }
+            
+            if (data.selfish) {
+                document.querySelectorAll('[data-question="selfish"]').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.value === data.selfish.answer) {
+                        btn.classList.add('active');
+                    }
+                });
+                document.getElementById('selfish-reflection').value = data.selfish.reflection || '';
+                document.getElementById('selfish-reflection-area').style.display = data.selfish.answer === 'yes' ? 'block' : 'none';
+            }
+            
+            if (data.apology) {
+                document.querySelectorAll('[data-question="apology"]').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.value === data.apology.answer) {
+                        btn.classList.add('active');
+                    }
+                });
+                document.getElementById('apology-reflection').value = data.apology.reflection || '';
+                document.getElementById('apology-reflection-area').style.display = data.apology.answer === 'yes' ? 'block' : 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading check-in data:', error);
+    }
+}
+
+// Function to set up navigation
+function setupNavigation() {
+    // Navigation buttons at the bottom
+    const journalBtn = document.getElementById('journal-button');
+    const homeBtn = document.getElementById('home-button');
+    const profileBtn = document.getElementById('profile-button');
+    const panicBtn = document.getElementById('panic-button');
+    
+    // Section navigation buttons
+    const viewMorningBtn = document.getElementById('view-morning-btn');
+    const viewTenthStepBtn = document.getElementById('view-tenth-step-btn');
+    
+    // Handle navigation to home
+    if (homeBtn) {
+        homeBtn.addEventListener('click', () => {
+            document.getElementById('morning-checkin-form').style.display = 'block';
+            document.getElementById('tenth-step-view').style.display = 'none';
+            document.getElementById('journal-view').style.display = 'none';
+            document.getElementById('profile-view').style.display = 'none';
+            document.getElementById('panic-mode-view').style.display = 'none';
+            
+            // Load existing data
+            loadCheckInData();
+        });
+    }
+    
+    // Handle navigation to journal
+    if (journalBtn) {
+        journalBtn.addEventListener('click', () => {
+            document.getElementById('morning-checkin-form').style.display = 'none';
+            document.getElementById('tenth-step-view').style.display = 'none';
+            document.getElementById('journal-view').style.display = 'block';
+            document.getElementById('profile-view').style.display = 'none';
+            document.getElementById('panic-mode-view').style.display = 'none';
+            
+            // Load journal entries
+            loadJournalEntries();
+        });
+    }
+    
+    // Handle navigation to profile
+    if (profileBtn) {
+        profileBtn.addEventListener('click', () => {
+            document.getElementById('morning-checkin-form').style.display = 'none';
+            document.getElementById('tenth-step-view').style.display = 'none';
+            document.getElementById('journal-view').style.display = 'none';
+            document.getElementById('profile-view').style.display = 'block';
+            document.getElementById('panic-mode-view').style.display = 'none';
+        });
+    }
+    
+    // Handle panic button
+    if (panicBtn) {
+        panicBtn.addEventListener('click', () => {
+            document.getElementById('morning-checkin-form').style.display = 'none';
+            document.getElementById('tenth-step-view').style.display = 'none';
+            document.getElementById('journal-view').style.display = 'none';
+            document.getElementById('profile-view').style.display = 'none';
+            document.getElementById('panic-mode-view').style.display = 'block';
+        });
+    }
+    
+    // Handle morning check-in button
+    if (viewMorningBtn) {
+        viewMorningBtn.addEventListener('click', () => {
+            document.getElementById('morning-checkin-form').style.display = 'block';
+            document.getElementById('tenth-step-view').style.display = 'none';
+            document.getElementById('journal-view').style.display = 'none';
+            document.getElementById('profile-view').style.display = 'none';
+            document.getElementById('panic-mode-view').style.display = 'none';
+            
+            // Load existing data
+            loadCheckInData();
+        });
+    }
+    
+    // Handle 10th step button
+    if (viewTenthStepBtn) {
+        viewTenthStepBtn.addEventListener('click', () => {
+            document.getElementById('morning-checkin-form').style.display = 'none';
+            document.getElementById('tenth-step-view').style.display = 'block';
+            document.getElementById('journal-view').style.display = 'none';
+            document.getElementById('profile-view').style.display = 'none';
+            document.getElementById('panic-mode-view').style.display = 'none';
+            
+            // Load existing data
+            loadCheckInData();
+        });
+    }
 }
